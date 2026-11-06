@@ -106,47 +106,6 @@ public partial class HudWindow : Window
         }
     }
 
-    private void HeaderBar_OnMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
-    {
-        if (e.ButtonState != MouseButtonState.Pressed || e.OriginalSource is not DependencyObject source)
-        {
-            return;
-        }
-
-        if (FindAncestor<ButtonBase>(source) is not null || FindAncestor<TextBox>(source) is not null)
-        {
-            return;
-        }
-
-        if (e.ClickCount == 2)
-        {
-            ToggleMaximize();
-            e.Handled = true;
-            return;
-        }
-
-        // A maximized window cannot be resized or dragged normally. Restore it
-        // first and keep the cursor over the header so the drag feels natural.
-        if (WindowState == WindowState.Maximized)
-        {
-            var position = e.GetPosition(this);
-            var screenPoint = PointToScreen(position);
-            WindowState = WindowState.Normal;
-            var dpi = VisualTreeHelper.GetDpi(this);
-            Left = screenPoint.X / dpi.DpiScaleX - position.X;
-            Top = screenPoint.Y / dpi.DpiScaleY - position.Y;
-        }
-
-        try
-        {
-            DragMove();
-        }
-        catch (InvalidOperationException)
-        {
-            // DragMove can throw if the button state changes between events.
-        }
-    }
-
     private void MaximizeButton_OnClick(object sender, RoutedEventArgs e) => ToggleMaximize();
 
     private void ToggleMaximize()

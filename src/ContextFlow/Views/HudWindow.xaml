@@ -21,7 +21,7 @@
         TextOptions.TextFormattingMode="Ideal">
 
     <shell:WindowChrome.WindowChrome>
-        <shell:WindowChrome CaptionHeight="0"
+        <shell:WindowChrome CaptionHeight="72"
                             ResizeBorderThickness="6"
                             GlassFrameThickness="0"
                             CornerRadius="0"
@@ -66,8 +66,7 @@
                 <!-- ============================ HEADER ============================ -->
                 <Grid x:Name="HeaderBar"
                       Grid.Row="0"
-                      Background="Transparent"
-                      MouseLeftButtonDown="HeaderBar_OnMouseLeftButtonDown">
+                      Background="Transparent">
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="Auto" />
                         <ColumnDefinition Width="*" />
@@ -168,6 +167,7 @@
                         </Border>
 
                         <Button Style="{StaticResource IconButtonStyle}"
+                                shell:WindowChrome.IsHitTestVisibleInChrome="True"
                                 Content="{Binding ThemeIconGlyph}"
                                 FontFamily="Segoe UI Symbol"
                                 FontSize="15"
@@ -178,6 +178,7 @@
                                 Margin="8,0,8,0"
                                 Padding="13,0"
                                 Style="{StaticResource PrimaryButtonStyle}"
+                                shell:WindowChrome.IsHitTestVisibleInChrome="True"
                                 Content="OPTIMIZE NOW"
                                 FontSize="9.5"
                                 Command="{Binding Commands.OptimizeNow}"
@@ -185,6 +186,7 @@
                         <Button x:Name="MaximizeButton"
                                 Margin="0,0,8,0"
                                 Style="{StaticResource IconButtonStyle}"
+                                shell:WindowChrome.IsHitTestVisibleInChrome="True"
                                 Content="□"
                                 FontFamily="Segoe UI Symbol"
                                 FontSize="14"
@@ -192,6 +194,7 @@
                                 Click="MaximizeButton_OnClick"
                                 ToolTip="Maximize / restore (double-click header)" />
                         <Button Style="{StaticResource IconButtonStyle}"
+                                shell:WindowChrome.IsHitTestVisibleInChrome="True"
                                 Content="—"
                                 FontFamily="{StaticResource BodyFontFamily}"
                                 FontSize="16"
