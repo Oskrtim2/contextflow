@@ -92,20 +92,22 @@ If the process is killed, the session journal restores external state on the nex
 
 Requirements:
 
-- **Ctrl + E** — previous managed window (scroll up).
-- **Ctrl + F** — next managed window (scroll down).
-- **Ctrl + E + F** — open or collapse the HUD.
+- **Scroll up** — previous managed window; default **Ctrl + E**.
+- **Scroll down** — next managed window; default **Ctrl + F**.
+- **Ctrl + E + F** — open or collapse the HUD (fixed).
 
-`RegisterHotKey` can only register modifiers plus a single virtual key. It cannot register two non-modifier keys pressed together, so the app uses `SetWindowsHookEx(WH_KEYBOARD_LL)`.
+The two scroll gestures are persisted as `HotkeyGesture` strings (`"Ctrl+E"`, `"Alt+Left"`, etc.) and can be rebound from the Settings tab. `RegisterHotKey` can only register modifiers plus a single virtual key. It cannot register two non-modifier keys pressed together, so the app uses `SetWindowsHookEx(WH_KEYBOARD_LL)`.
 
 `GlobalHotkeyHook`:
 
-- Tracks physical E and F key-down state and ignores key repeat, so one physical press produces one action.
-- Checks `GetAsyncKeyState(VK_CONTROL)` on each relevant event.
-- Starts a 180 ms disambiguation timer for a lone Ctrl+E or Ctrl+F.
+- Reads the current modifier state (`Ctrl`, `Alt`, `Shift`, `Win`) with `GetAsyncKeyState`.
+- Matches the configured scroll gestures exactly; extra modifiers do not match.
+- Tracks physical key-down state and ignores key repeat, so one physical press produces one action.
+- Starts a 180 ms disambiguation timer only when a configured scroll gesture uses Ctrl+E or Ctrl+F.
 - If the other key is pressed within the window, cancels the pending scroll and raises the Ctrl+E+F `Pressed` event.
 - If the timer expires, raises `PreviousRequested` or `NextRequested` on the UI thread. If the key is still held, the chord is suppressed until both keys are released, so a slow second key cannot open the HUD accidentally.
 - Resets state on key-up. A timer that fires after both keys were released does not leave the next shortcut blocked.
+- Suspends all detection while the Settings tab is capturing a new shortcut.
 - Always calls `CallNextHookEx`; the hook is observational, never swallowing input.
 - Fails closed: if hook installation fails, the HUD still opens from the tray and bubble; the status footer reports `HOTKEYS UNAVAILABLE`.
 
@@ -121,6 +123,22 @@ Requirements:
 `Ctrl+E` decrements and `Ctrl+F` increments the index; the arithmetic wraps in both directions. `WindowManager.FocusAndMaximizeWindow` restores minimized windows, maximizes windows that expose `WS_MAXIMIZEBOX`, and calls the existing `FocusWindow` thread-input path.
 
 Because the snapshot can lag up to one second, a navigation performed in the last 1.5 seconds is treated as authoritative; `WindowsChanged` snapshots captured during that interval do not overwrite the selected handle. Outside that interval the real foreground window is authoritative. This prevents rapid Ctrl+F presses from selecting the same window twice.
+
+### Page map and split-screen tiling
+
+Each capsule is presented as a page. The HUD page map renders page cards with a `PageLayoutPreview` and sends `Commands.GoToPage` when clicked. `MainViewModel.ActivateCapsule` asks `WindowManager.ArrangeCapsuleWindows` to:
+
+1. Collect the page's windows in stable creation order.
+2. Compute `PageLayout` slots inside the display work area, with an 8-pixel gap.
+3. Restore maximized/minimized windows synchronously with `SetWindowPlacement`.
+4. Apply `SetWindowPos` for each slot.
+5. Focus the first window when the page was opened from the map, then collapse the HUD.
+
+`Auto` uses one full window, two columns, a large left pane plus two right panes for three windows, and a grid for four or more. `Columns`, `Rows`, and `Grid` are explicit layout choices. `PageLayoutPreview` mirrors the same slot math so the map and Settings preview communicate the result before navigation.
+
+### Localization
+
+`LocalizationService` swaps `Themes/Strings.en.xaml` and `Themes/Strings.es.xaml` in the application merged dictionaries. XAML uses `DynamicResource` string keys, so the whole visual tree updates without rebuilding windows. View-model/code strings call `LocalizationService.Get/Format`; `MainViewModel` raises a null property change and refreshes window/page view models when the language changes. The language and hotkey strings are persisted in `settings.json`.
 
 ### HUD and bubble placement
 

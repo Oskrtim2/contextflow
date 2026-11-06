@@ -9,7 +9,9 @@ ContextFlow lives on the desktop as a translucent floating bubble. Press **Ctrl 
 ## Highlights
 
 - **Ctrl+E+F global chord** that opens or collapses the HUD from any application.
-- **Infinite window scroll**: **Ctrl+E** and **Ctrl+F** move through a circular, capsule-ordered ring of managed windows and maximize/focus the selected one. At the ends it wraps around instead of stopping.
+- **Infinite window scroll**: **Ctrl+E** and **Ctrl+F** move through a circular, capsule-ordered ring of managed windows and maximize/focus the selected one. At the ends it wraps around instead of stopping. Both gestures are configurable in Settings.
+- **Page map and split-screen tiling**: each workflow page owns a logical screen and can tile its windows in Auto, Columns, Rows, or Grid layouts. The page map in the HUD shows every page with a live layout preview; one click jumps to the page and arranges its windows.
+- **Settings tab**: switch the complete UI between **English and Español**, choose the page tiling layout, rebind the scroll-up/scroll-down shortcuts, or reset them to defaults.
 - **Multi-monitor floating UI**: the bubble and HUD can be dragged to any display and remember their position, size, and maximized state. The HUD can be resized normally, maximized, and restored with the header button or a double-click.
 - **Floating semi-transparent bubble** with drag-to-reposition and edge snapping. The HUD and bubble use real Windows 11 Acrylic/Mica composition, DWM rounded corners, and immersive dark mode.
 - **Spatial workflow capsules** across a logical infinite canvas, each assigned to a physical display. Capsule activation moves the whole window set to its target monitor.
@@ -81,6 +83,7 @@ contextflow/  (repository root)
    ├─ Controls/
    │  ├─ GaugeArc.cs
    │  ├─ MonitorRouteControl.cs
+   │  ├─ PageLayoutPreview.cs
    │  ├─ Sparkline.cs
    │  └─ WorkspaceMap.cs
    ├─ Infrastructure/
@@ -97,8 +100,10 @@ contextflow/  (repository root)
    │  ├─ AppSettings.cs
    │  ├─ CapsuleDefinition.cs
    │  ├─ DisplayInfo.cs
+   │  ├─ HotkeyGesture.cs
    │  ├─ ManagedWindow.cs
    │  ├─ OptimizationEvent.cs
+   │  ├─ PageLayout.cs
    │  ├─ PolicyModels.cs
    │  ├─ ScreenRect.cs
    │  └─ TelemetrySnapshot.cs
@@ -109,6 +114,7 @@ contextflow/  (repository root)
    │  ├─ HardwareAIOptimizer.cs
    │  ├─ IconService.cs
    │  ├─ LocalAiPolicyEngine.cs
+   │  ├─ LocalizationService.cs
    │  ├─ SessionGuard.cs
    │  ├─ SettingsService.cs
    │  ├─ SingleInstanceService.cs
@@ -121,7 +127,9 @@ contextflow/  (repository root)
    ├─ Themes/
    │  ├─ Dark.xaml
    │  ├─ Light.xaml
-   │  └─ Styles.xaml
+   │  ├─ Styles.xaml
+   │  ├─ Strings.en.xaml
+   │  └─ Strings.es.xaml
    ├─ ViewModels/
    │  ├─ ActivityItemViewModel.cs
    │  ├─ CapsuleItemViewModel.cs
@@ -165,12 +173,14 @@ The production package is self-contained and does not require this.
 1. ContextFlow starts as a translucent bubble near the right edge of the primary monitor.
 2. Press **Ctrl + E + F**. Hold Ctrl and press E and F together; the chord is detected globally.
 3. With the HUD collapsed, press **Ctrl + E** for the previous window or **Ctrl + F** for the next window. The selected window is restored, maximized, and focused; the ring wraps infinitely.
-4. Click a capsule to activate it and route its windows to that capsule's display.
-5. Drag the pill switch under **Route active capsule** to send the active capsule to another display.
-6. Click the capsule pill on any process row to move that window to another capsule.
-7. Use the **Auto optimize** and **Capsule isolation** switches. Capsule isolation is opt-in because it hides windows from DWM composition.
-8. Drag the HUD header to another monitor, resize its borders, or use the **□ / ❐** header button to maximize/restore.
-9. Press **Esc** or the **—** button to collapse back to the bubble.
+4. Open the **PAGE MAP** on the right and click a page to jump to it. ContextFlow tiles that page's windows on the target display using the layout selected in Settings.
+5. Click a capsule/page in the left rail to activate it; the page's windows are tiled on its target display.
+6. Drag the pill switch under **Route active page** to send the active page to another display.
+7. Click the page pill on any process row to move that window to another page.
+8. Use **Settings** to switch language, change the page layout, or rebind Ctrl+E/Ctrl+F.
+9. Use the **Auto optimize** and **Page isolation** switches. Isolation is opt-in because it hides windows from DWM composition.
+10. Drag the HUD header to another monitor, resize its borders, or use the **□ / ❐** header button to maximize/restore.
+11. Press **Esc** or the **—** button to collapse back to the bubble.
 
 The second launch of `ContextFlow.exe` signals the existing instance to open its HUD rather than creating a duplicate background process.
 
@@ -241,9 +251,10 @@ WPF views
         │
 AppController (composition root + lifecycle + hotkey + single-instance + tray)
         │
-        ├─ GlobalHotkeyHook ── WH_KEYBOARD_LL Ctrl+E / Ctrl+F / Ctrl+E+F detector
-        ├─ WindowManager ───── EnumWindows, DWM bounds, assignments, DeferWindowPos routing, DWM cloak
+        ├─ GlobalHotkeyHook ── configurable WH_KEYBOARD_LL scroll gestures + Ctrl+E+F
+        ├─ WindowManager ───── EnumWindows, DWM bounds, page tiling, DeferWindowPos routing, DWM cloak
         ├─ WindowNavigator ── circular capsule-ordered window scroll + maximize/focus
+        ├─ LocalizationService ── English/Spanish runtime resource dictionaries
         ├─ DisplayService ──── EnumDisplayMonitors, per-monitor work areas & DPI
         ├─ TelemetryService ── 500 ms CPU/RAM/GPU sampler
         ├─ HardwareAIOptimizer ─ policy application, priority restoration, working-set trim
@@ -261,8 +272,8 @@ Read **[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)** for the detailed data flow
 
 `RegisterHotKey` supports modifiers plus **one** virtual key. It cannot represent “Ctrl + E + F pressed together.” ContextFlow therefore uses a global low-level keyboard hook (`WH_KEYBOARD_LL`) with a short (180 ms) disambiguation window:
 
-- **Ctrl+E** or **Ctrl+F** starts a pending scroll action.
-- If the other key is pressed within the window, the pending scroll is cancelled and **Ctrl+E+F** toggles the HUD.
+- **Ctrl+E** or **Ctrl+F** starts a pending scroll action by default. Both gestures are rebindable in **Settings**.
+- If the other key is pressed within the window, the pending scroll is cancelled and **Ctrl+E+F** toggles the HUD. The HUD chord is intentionally fixed.
 - If the second key arrives later, the scroll action has already fired; the chord is suppressed until both keys are released so a slow second key cannot accidentally open the HUD.
 - Key repeat is ignored; one physical press produces one navigation step.
 
@@ -324,6 +335,9 @@ ContextFlow is deliberately honest about the platform:
 - App starts as a bubble; global hotkey opens the HUD; pressing it again collapses to the bubble.
 - Ctrl+E/Ctrl+F scroll through managed windows, maximize the selection, wrap at the ring ends, and do not trigger the HUD chord.
 - HUD and bubble can be dragged between both monitors, resized, maximized, and restored across hide/show cycles.
+- Page map jumps tile the selected page; Auto, Columns, Rows, and Grid layouts were exercised.
+- English/Spanish switching updates the main HUD, page map, settings, generated status labels, and tray menu.
+- Custom scroll gestures were captured, persisted, applied to the global hook, and reset to defaults.
 - Capsule pill menus stay anchored at the click position while the process matrix refreshes.
 - Single-instance activation opens the running instance's HUD.
 - Light and dark resource themes; DWM composition and acrylic rendering on Windows 11.

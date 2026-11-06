@@ -22,8 +22,8 @@ It is a chord: hold Ctrl and press **E**, then **F** while Ctrl is held. Both ke
 
 When the HUD is collapsed, the managed windows form a circular vertical desktop ordered by capsule position and window creation time:
 
-- **Ctrl + E** — previous window (scroll up). At the first window it wraps to the last.
-- **Ctrl + F** — next window (scroll down). At the last window it wraps to the first.
+- **Ctrl + E** — previous window (scroll up). At the first window it wraps to the last. *Default; rebindable in Settings.*
+- **Ctrl + F** — next window (scroll down). At the last window it wraps to the first. *Default; rebindable in Settings.*
 - The selected window is restored if minimized, maximized if it supports it, and brought to the foreground.
 - The HUD process matrix highlights the current scroll window and shows its position (`3 / 12`) next to **Application windows**.
 - The **▲ / ▼** buttons in the process matrix header trigger the same actions. They collapse the HUD first so the selected window is visible.
@@ -70,7 +70,7 @@ A segmented, draggable switch:
 - **CPU** — system utilization, logical processor count, 60-sample sparkline.
 - **Memory** — used / total physical RAM and percentage.
 - **GPU** — busiest GPU Engine utilization reported by PDH; progress ring and sparkline. If PDH GPU counters are not exposed on your system, the card shows `—`.
-- **Managed windows** — count of all currently tracked application windows and capsules.
+- **Managed windows** — count of all currently tracked application windows and pages.
 
 ### Process matrix
 
@@ -78,44 +78,74 @@ Each row contains:
 
 - app icon and fallback initial
 - window title and process name + PID
-- capsule assignment pill
+- page assignment pill
 - monitor
 - physical X/Y position and window size
 - current state: `FOCUSED`, `ON SCREEN`, `MINIMIZED`, or `CLOAKED`
 
 Actions:
 
-- **Click the capsule pill** → choose another capsule. The window is assigned and, if a target display exists, routed there. The menu stays anchored to the place where you clicked even while the matrix refreshes.
+- **Click the page pill** → choose another page. The window is assigned and, if a target display exists, routed there. The menu stays anchored to the place where you clicked even while the matrix refreshes.
 - **Double-click a row** or use **↗** → focus that window and collapse the HUD so you can work.
 - **▲ / ▼** → previous or next window in the infinite scroll ring.
-- **Filter windows…** → search by title, process, or capsule.
-- **ALL / CAPSULE** → show every managed window or only the active capsule.
+- **Filter windows…** → search by title, process, or page.
+- **ALL / PAGE** → show every managed window or only the active page.
 - The current scroll window has an accent-tinted row. The header shows its title and position (`current / total`).
 - The matrix is a snapshot refreshed approximately once per second.
 
-### Canvas overview
+### Page map and split-screen pages
 
-A pannable, zoomable topology of your capsules.
+The **PAGE MAP** on the right is the main page control. Each card shows:
 
-- **Drag** empty canvas to pan.
-- **Ctrl + wheel** zooms around the cursor.
-- **Wheel / Shift + wheel** scrolls vertically / horizontally.
-- **Click a capsule** to activate it.
-- **Double-click** the map to fit all capsules.
+- page number and name
+- number of windows
+- a mini preview of the split layout
+- the active-page accent
 
-The canvas is a logical topology of capsules. The actual infinite desktop interaction is the Ctrl+E/Ctrl+F window ring described above: each selected window is maximized and focused, so you can scroll through full-screen work contexts. Activating a capsule maps its window set to its target monitor. This is explained in `ARCHITECTURE.md`.
+Click a card to **go to that page**. ContextFlow activates it, tiles its windows on the page's target display, focuses the first window, and collapses the HUD so you can use the page immediately.
+
+Each page is a single-screen workspace simulation. The selected layout is applied when the page opens:
+
+- **Auto** — one window fills the screen; two use columns; three use a large left pane plus two stacked panes; four or more use a grid.
+- **Columns** — every window gets an equal vertical column.
+- **Rows** — every window gets an equal horizontal row.
+- **Grid** — windows are arranged in a square-ish grid.
+
+The layout can be changed in **Settings**. Some applications enforce a minimum window size or own a full-screen state; ContextFlow reports the windows it could tile and leaves the rest untouched.
 
 ### AI activity journal
 
 Shows the most recent local policy actions, including working-set trims, priority changes, DWM composition changes, and routing assignments. Detail text includes the local policy score and inactivity time when applicable.
 
+## Settings tab
+
+Open the **SETTINGS / AJUSTES** tab in the HUD header.
+
+### Language
+
+Choose **English** or **Español**. The whole interface switches immediately, including the HUD, page map, status labels, settings, tooltips, and tray menu. The language is saved in `settings.json`.
+
+### Infinite scroll shortcuts
+
+- **Scroll up** and **Scroll down** show the current gesture.
+- Click **Change / Cambiar**, then press the new combination. At least one modifier (Ctrl, Alt, Shift, or Win) is required.
+- The new gesture is applied to the global hook immediately and saved.
+- **Ctrl+E+F** for the HUD is fixed and shown for reference.
+- **Reset defaults / Restaurar valores** returns the scroll gestures to Ctrl+E / Ctrl+F and the layout to Auto.
+
+While capturing a shortcut, the global hook is suspended so the keys you press do not navigate windows.
+
+### Page layout
+
+Choose **Auto**, **Columns**, **Rows**, or **Grid**. The preview on the right shows how the active page will divide the screen.
+
 ## Tray menu
 
-- **Open ContextFlow**
-- **AI optimization** toggle
-- **DWM capsule isolation** toggle
-- **Dark theme** toggle
-- **Exit ContextFlow** — performs the full restoration path for priorities and DWM state.
+- **Open ContextFlow / Abrir ContextFlow**
+- **AI optimization / Optimización IA** toggle
+- **Page isolation / Aislamiento de páginas** toggle
+- **Dark theme / Tema oscuro** toggle
+- **Exit ContextFlow / Salir de ContextFlow** — performs the full restoration path for priorities and DWM state.
 
 ## Data and troubleshooting
 
