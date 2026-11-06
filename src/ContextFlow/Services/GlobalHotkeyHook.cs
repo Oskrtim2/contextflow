@@ -3,19 +3,19 @@ using System.Windows;
 using System.Windows.Threading;
 using ContextFlow.Infrastructure;
 using ContextFlow.Interop;
+using ContextFlow.Models;
 
 namespace ContextFlow.Services;
 
 /// <summary>
 /// Global keyboard listener for the ContextFlow shortcuts:
-///   Ctrl+E      previous managed window (scroll up)
-///   Ctrl+F      next managed window (scroll down)
-///   Ctrl+E+F    expand or collapse the floating HUD
+///   configurable scroll up / scroll down (Ctrl+E and Ctrl+F by default)
+///   Ctrl+E+F to expand or collapse the floating HUD.
 ///
 /// A chord with two non-modifier keys cannot be registered with RegisterHotKey,
-/// so this class uses a low-level keyboard hook. A short disambiguation window
-/// prevents Ctrl+E or Ctrl+F from firing when the user is actually pressing the
-/// full Ctrl+E+F chord. The hook observes input but never suppresses it.
+/// so this class uses a low-level keyboard hook. When a scroll gesture uses
+/// Ctrl+E or Ctrl+F, a short disambiguation window prevents the first key from
+/// firing before the full Ctrl+E+F chord is recognized.
 /// </summary>
 public sealed class GlobalHotkeyHook : IDisposable
 {
@@ -24,12 +24,14 @@ public sealed class GlobalHotkeyHook : IDisposable
     private readonly AppLog _log;
     private readonly Dispatcher _dispatcher;
     private readonly NativeMethods.LowLevelKeyboardProc _hookProc;
+    private readonly HashSet<int> _downKeys = new();
     private DispatcherTimer? _navigationTimer;
     private IntPtr _hookHandle;
-    private bool _eDown;
-    private bool _fDown;
+    private HotkeyGesture _scrollUp = HotkeyGesture.DefaultScrollUp;
+    private HotkeyGesture _scrollDown = HotkeyGesture.DefaultScrollDown;
     private bool _chordFired;
     private bool _suppressChordUntilRelease;
+    private bool _suspended;
     private int _pendingDirection;
     private bool _disposed;
 
@@ -43,15 +45,40 @@ public sealed class GlobalHotkeyHook : IDisposable
     /// <summary>Raised for the complete Ctrl+E+F chord.</summary>
     public event EventHandler? Pressed;
 
-    /// <summary>Raised when Ctrl+E is pressed without F.</summary>
+    /// <summary>Raised when the configured scroll-up gesture is pressed.</summary>
     public event EventHandler? PreviousRequested;
 
-    /// <summary>Raised when Ctrl+F is pressed without E.</summary>
+    /// <summary>Raised when the configured scroll-down gesture is pressed.</summary>
     public event EventHandler? NextRequested;
 
     public bool IsRunning { get; private set; }
 
     public string? LastError { get; private set; }
+
+    /// <summary>Suppresses navigation while the settings tab is capturing a hotkey.</summary>
+    public bool IsSuspended
+    {
+        get => _suspended;
+        set
+        {
+            _suspended = value;
+            CancelPending();
+            _downKeys.Clear();
+            _chordFired = false;
+            _suppressChordUntilRelease = false;
+        }
+    }
+
+    public void UpdateGestures(HotkeyGesture scrollUp, HotkeyGesture scrollDown)
+    {
+        _scrollUp = scrollUp.IsValid ? scrollUp : HotkeyGesture.DefaultScrollUp;
+        _scrollDown = scrollDown.IsValid ? scrollDown : HotkeyGesture.DefaultScrollDown;
+        CancelPending();
+        _downKeys.Clear();
+        _chordFired = false;
+        _suppressChordUntilRelease = false;
+        _log.Info($"Global scroll gestures updated: up={_scrollUp.Display}, down={_scrollDown.Display}.");
+    }
 
     public bool Start()
     {
@@ -83,7 +110,7 @@ public sealed class GlobalHotkeyHook : IDisposable
             }
 
             IsRunning = true;
-            _log.Info("Global Ctrl+E / Ctrl+F / Ctrl+E+F low-level keyboard hook installed.");
+            _log.Info("Global keyboard hook installed for scroll gestures and Ctrl+E+F.");
             return true;
         }
         catch (Exception ex)
@@ -96,7 +123,7 @@ public sealed class GlobalHotkeyHook : IDisposable
 
     private IntPtr HookCallback(int nCode, IntPtr wParam, IntPtr lParam)
     {
-        if (nCode >= 0)
+        if (nCode >= 0 && !_suspended)
         {
             try
             {
@@ -123,55 +150,58 @@ public sealed class GlobalHotkeyHook : IDisposable
     {
         var data = Marshal.PtrToStructure<NativeMethods.KBDLLHOOKSTRUCT>(lParam);
         var key = (int)data.vkCode;
-
-        if (key == NativeMethods.VK_E)
+        if (!_downKeys.Add(key))
         {
-            if (_eDown)
+            return;
+        }
+
+        var modifiers = GetModifiers();
+
+        // Full HUD chord. This wins over a scroll gesture, but only when the
+        // pending scroll has not already fired (a slow second key must not
+        // reopen the HUD).
+        if (!_chordFired && !_suppressChordUntilRelease)
+        {
+            if (modifiers == HotkeyModifiers.Control && key == NativeMethods.VK_E &&
+                _downKeys.Contains(NativeMethods.VK_F))
             {
+                FireChord();
                 return;
             }
 
-            _eDown = true;
-            if (!IsControlDown())
+            if (modifiers == HotkeyModifiers.Control && key == NativeMethods.VK_F &&
+                _downKeys.Contains(NativeMethods.VK_E))
             {
+                FireChord();
                 return;
-            }
-
-            if (!_chordFired && !_suppressChordUntilRelease)
-            {
-                if (IsKeyDown(NativeMethods.VK_F))
-                {
-                    FireChord();
-                }
-                else
-                {
-                    StartPending(-1);
-                }
             }
         }
-        else if (key == NativeMethods.VK_F)
+
+        if (_chordFired || _suppressChordUntilRelease)
         {
-            if (_fDown)
-            {
-                return;
-            }
+            return;
+        }
 
-            _fDown = true;
-            if (!IsControlDown())
+        if (Matches(_scrollUp, key, modifiers))
+        {
+            if (NeedsChordDisambiguation(key, modifiers))
             {
-                return;
+                StartPending(-1);
             }
-
-            if (!_chordFired && !_suppressChordUntilRelease)
+            else
             {
-                if (IsKeyDown(NativeMethods.VK_E))
-                {
-                    FireChord();
-                }
-                else
-                {
-                    StartPending(1);
-                }
+                RaisePrevious();
+            }
+        }
+        else if (Matches(_scrollDown, key, modifiers))
+        {
+            if (NeedsChordDisambiguation(key, modifiers))
+            {
+                StartPending(1);
+            }
+            else
+            {
+                RaiseNext();
             }
         }
     }
@@ -180,22 +210,22 @@ public sealed class GlobalHotkeyHook : IDisposable
     {
         var data = Marshal.PtrToStructure<NativeMethods.KBDLLHOOKSTRUCT>(lParam);
         var key = (int)data.vkCode;
+        _downKeys.Remove(key);
 
-        if (key == NativeMethods.VK_E)
-        {
-            _eDown = false;
-        }
-        else if (key == NativeMethods.VK_F)
-        {
-            _fDown = false;
-        }
-
-        if (!_eDown && !_fDown)
+        if (!_downKeys.Contains(NativeMethods.VK_E) &&
+            !_downKeys.Contains(NativeMethods.VK_F))
         {
             _chordFired = false;
             _suppressChordUntilRelease = false;
         }
     }
+
+    private static bool Matches(HotkeyGesture gesture, int key, HotkeyModifiers modifiers) =>
+        gesture.IsValid && gesture.VirtualKey == key && gesture.Modifiers == modifiers;
+
+    private static bool NeedsChordDisambiguation(int key, HotkeyModifiers modifiers) =>
+        modifiers == HotkeyModifiers.Control &&
+        (key == NativeMethods.VK_E || key == NativeMethods.VK_F);
 
     private void StartPending(int direction)
     {
@@ -226,24 +256,34 @@ public sealed class GlobalHotkeyHook : IDisposable
             return;
         }
 
-        // A lone Ctrl+E/F was detected. If the key is still held, do not allow
-        // a slower second key press to turn the same gesture into the chord.
-        // If the key was already released, leave the state clean for the next
-        // shortcut (the timer can fire a few milliseconds after key-up).
-        if (_eDown || _fDown)
+        // If the key is still held, do not let a slower second key turn the
+        // gesture into the HUD chord. If it was released, leave the next
+        // shortcut clean (the timer can fire just after key-up).
+        if (_downKeys.Contains(NativeMethods.VK_E) || _downKeys.Contains(NativeMethods.VK_F))
         {
             _suppressChordUntilRelease = true;
         }
+
         if (direction < 0)
         {
-            _log.Info("Global hotkey: previous window.");
-            RaiseEvent(PreviousRequested);
+            RaisePrevious();
         }
         else
         {
-            _log.Info("Global hotkey: next window.");
-            RaiseEvent(NextRequested);
+            RaiseNext();
         }
+    }
+
+    private void RaisePrevious()
+    {
+        _log.Info("Global hotkey: previous window.");
+        RaiseEvent(PreviousRequested);
+    }
+
+    private void RaiseNext()
+    {
+        _log.Info("Global hotkey: next window.");
+        RaiseEvent(NextRequested);
     }
 
     private void FireChord()
@@ -260,7 +300,19 @@ public sealed class GlobalHotkeyHook : IDisposable
         RaiseEvent(Pressed);
     }
 
-    private static bool IsControlDown() => IsKeyDown(NativeMethods.VK_CONTROL);
+    private static HotkeyModifiers GetModifiers()
+    {
+        var modifiers = HotkeyModifiers.None;
+        if (IsKeyDown(NativeMethods.VK_CONTROL)) modifiers |= HotkeyModifiers.Control;
+        if (IsKeyDown(NativeMethods.VK_MENU)) modifiers |= HotkeyModifiers.Alt;
+        if (IsKeyDown(NativeMethods.VK_SHIFT)) modifiers |= HotkeyModifiers.Shift;
+        if (IsKeyDown(NativeMethods.VK_LWIN) || IsKeyDown(NativeMethods.VK_RWIN))
+        {
+            modifiers |= HotkeyModifiers.Win;
+        }
+
+        return modifiers;
+    }
 
     private static bool IsKeyDown(int virtualKey) =>
         (NativeMethods.GetAsyncKeyState(virtualKey) & 0x8000) != 0;

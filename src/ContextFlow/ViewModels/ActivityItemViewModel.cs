@@ -1,5 +1,6 @@
 using ContextFlow.Infrastructure;
 using ContextFlow.Models;
+using ContextFlow.Services;
 
 namespace ContextFlow.ViewModels;
 
@@ -10,17 +11,17 @@ public sealed class ActivityItemViewModel
         Event = optimizationEvent;
         ActionLabel = optimizationEvent.Kind switch
         {
-            OptimizationEventKind.PriorityThrottled => "Priority throttled",
-            OptimizationEventKind.PriorityRestored => "Priority restored",
-            OptimizationEventKind.WorkingSetTrimmed => "Working set trimmed",
-            OptimizationEventKind.CompositionCloaked => "Isolation enabled",
-            OptimizationEventKind.CompositionRestored => "Isolation disabled",
-            OptimizationEventKind.CapsuleRouted => "Capsule routed",
-            OptimizationEventKind.WindowReassigned => "Window reassigned",
-            OptimizationEventKind.PolicyStarted => "AI policy started",
-            OptimizationEventKind.PolicyStopped => "AI policy paused",
-            OptimizationEventKind.Skipped => "Skipped",
-            _ => "Policy error"
+            OptimizationEventKind.PriorityThrottled => LocalizationService.Get("EventPriorityThrottled"),
+            OptimizationEventKind.PriorityRestored => LocalizationService.Get("EventPriorityRestored"),
+            OptimizationEventKind.WorkingSetTrimmed => LocalizationService.Get("EventWorkingSetTrimmed"),
+            OptimizationEventKind.CompositionCloaked => LocalizationService.Get("EventIsolationEnabled"),
+            OptimizationEventKind.CompositionRestored => LocalizationService.Get("EventIsolationDisabled"),
+            OptimizationEventKind.CapsuleRouted => LocalizationService.Get("EventPageRouted"),
+            OptimizationEventKind.WindowReassigned => LocalizationService.Get("EventWindowReassigned"),
+            OptimizationEventKind.PolicyStarted => LocalizationService.Get("EventPolicyStarted"),
+            OptimizationEventKind.PolicyStopped => LocalizationService.Get("EventPolicyPaused"),
+            OptimizationEventKind.Skipped => LocalizationService.Get("EventSkipped"),
+            _ => LocalizationService.Get("EventPolicyError")
         };
         IconGlyph = optimizationEvent.Kind switch
         {

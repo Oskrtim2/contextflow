@@ -2,6 +2,7 @@ using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.Windows;
 using System.Windows.Data;
+using System.Windows.Input;
 using System.Windows.Threading;
 using ContextFlow.Infrastructure;
 using ContextFlow.Models;
@@ -22,6 +23,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
     private readonly WindowNavigator _navigator;
     private readonly HardwareAIOptimizer _optimizer;
     private readonly TelemetryService _telemetry;
+    private readonly LocalizationService _localization;
     private readonly AppLog _log;
     private readonly Dispatcher _dispatcher;
     private readonly Dictionary<IntPtr, WindowItemViewModel> _windowLookup = new();
@@ -43,7 +45,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
     private double _gpuPercent;
     private double _ramUsedGb;
     private double _ramTotalGb;
-    private string _gpuDetail = "Waiting for PDH";
+    private string _gpuDetail = LocalizationService.Get("WaitingForPdh");
     private string _systemStatusText = "Nominal";
     private string _lastTelemetryLabel = "—";
     private IReadOnlyList<double> _cpuHistoryView = Array.Empty<double>();
@@ -53,13 +55,18 @@ public sealed class MainViewModel : ObservableObject, IDisposable
     private int _activeCapsuleWindowCount;
     private int _visibleWindowCount;
     private string _hotkeyStatusLabel = "INITIALIZING";
-    private string _hotkeyDetail = "Ctrl+E / Ctrl+F scroll · Ctrl+E+F HUD";
+    private string _hotkeyDetail = LocalizationService.Get("HotkeyDetail");
     private bool _hotkeyReady;
     private WindowNavigationResult? _currentNavigation;
-    private string _currentWindowTitle = "No window selected";
-    private string _currentWindowProcess = "Ctrl+E / Ctrl+F scrolls windows";
+    private string _currentWindowTitle = LocalizationService.Get("NoWindowSelected");
+    private string _currentWindowProcess = LocalizationService.Get("ScrollHint");
     private string _windowScrollPositionText = "—";
     private bool _hasScrollWindow;
+    private bool _isWorkspaceTab = true;
+    private bool _isCapturingHotkey;
+    private bool _captureScrollUp;
+    private string _settingsStatusMessage = string.Empty;
+    private bool _hasSettingsStatus;
 
     public MainViewModel(
         SettingsService settingsService,
@@ -68,6 +75,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         WindowNavigator navigator,
         HardwareAIOptimizer optimizer,
         TelemetryService telemetry,
+        LocalizationService localization,
         AppLog log)
     {
         _settingsService = settingsService;
@@ -76,6 +84,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         _navigator = navigator;
         _optimizer = optimizer;
         _telemetry = telemetry;
+        _localization = localization;
         _log = log;
         _dispatcher = Application.Current?.Dispatcher ?? Dispatcher.CurrentDispatcher;
 
@@ -88,8 +97,8 @@ public sealed class MainViewModel : ObservableObject, IDisposable
             _displayService.Current.Select(d => new DisplayItemViewModel(d)));
 
         Capsules = new ObservableCollection<CapsuleItemViewModel>(
-            _settingsService.Current.Capsules.Select(c =>
-                new CapsuleItemViewModel(c, ResolveDisplayLabel(c.TargetDisplay))));
+            _settingsService.Current.Capsules.Select((c, index) =>
+                new CapsuleItemViewModel(c, ResolveDisplayLabel(c.TargetDisplay), index + 1)));
 
         _activeCapsule = Capsules.FirstOrDefault(c =>
                                string.Equals(c.Id, _settingsService.Current.ActiveCapsuleId, StringComparison.Ordinal))
@@ -111,6 +120,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         _telemetry.SampleReceived += OnTelemetrySample;
         _optimizer.ActivityReported += OnOptimizerActivity;
         _navigator.Navigated += OnWindowNavigated;
+        _localization.LanguageChanged += OnLanguageChanged;
 
         _windowManager.ConfigureCapsules(
             _settingsService.Current.Capsules,
@@ -120,7 +130,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
             DateTimeOffset.Now,
             "ContextFlow",
             OptimizationEventKind.PolicyStarted,
-            $"Local policy online · {_optimizer.EngineLabel} · no cloud connectivity.",
+            LocalizationService.Format("PolicyOnlineFormat", _optimizer.EngineLabel),
             true));
 
         if (_telemetry.LastSample.Timestamp != default)
@@ -143,6 +153,8 @@ public sealed class MainViewModel : ObservableObject, IDisposable
     public event EventHandler? CollapseRequested;
     public event EventHandler? ExitRequested;
     public event Action<int>? WindowNavigationRequested;
+    public event EventHandler? HotkeysChanged;
+    public event Action<bool>? HotkeyCaptureStateChanged;
 
     /// <summary>
     /// Raised after activating a capsule restores minimized windows so the
@@ -151,6 +163,30 @@ public sealed class MainViewModel : ObservableObject, IDisposable
     public event EventHandler? HudFocusRequested;
 
     public CapsuleItemViewModel? ActiveCapsule => _activeCapsule;
+
+    public PageLayout PageLayout
+    {
+        get => _settingsService.Current.PageLayout;
+        set
+        {
+            if (_settingsService.Current.PageLayout == value)
+            {
+                return;
+            }
+
+            _settingsService.Current.PageLayout = value;
+            SaveSettings();
+            OnPropertyChanged();
+            OnPropertyChanged(nameof(IsLayoutAuto));
+            OnPropertyChanged(nameof(IsLayoutColumns));
+            OnPropertyChanged(nameof(IsLayoutRows));
+            OnPropertyChanged(nameof(IsLayoutGrid));
+            if (ActiveCapsule is not null)
+            {
+                ActivateCapsule(ActiveCapsule);
+            }
+        }
+    }
 
     public string SearchText
     {
@@ -247,7 +283,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
                 DateTimeOffset.Now,
                 "ContextFlow",
                 value ? OptimizationEventKind.PolicyStarted : OptimizationEventKind.PolicyStopped,
-                value ? "Local AI optimization resumed." : "Local AI optimization paused; priorities restored.",
+                LocalizationService.Get(value ? "OptimizationResumed" : "OptimizationPaused"),
                 true));
         }
     }
@@ -269,13 +305,14 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         }
     }
 
-    public string AiStatusText => IsOptimizationEnabled ? "ACTIVE" : "PAUSED";
+    public string AiStatusText => LocalizationService.Get(
+        IsOptimizationEnabled ? "AiActive" : "AiPausedStatus");
 
-    public string AiStatusDetail => IsOptimizationEnabled
-        ? "Watching inactive capsules every 10 seconds"
-        : "No process scheduling changes are being made";
+    public string AiStatusDetail => LocalizationService.Get(
+        IsOptimizationEnabled ? "AiWatching" : "AiPaused");
 
-    public string IsolationStatusText => IsCapsuleIsolationEnabled ? "COMPOSITION THROTTLED" : "COMPOSITION ON DEMAND";
+    public string IsolationStatusText => LocalizationService.Get(
+        IsCapsuleIsolationEnabled ? "IsolationOn" : "IsolationOff");
 
     public bool HotkeyReady
     {
@@ -305,6 +342,128 @@ public sealed class MainViewModel : ObservableObject, IDisposable
     {
         get => _hasScrollWindow;
         private set => SetProperty(ref _hasScrollWindow, value);
+    }
+
+    public bool IsWorkspaceTab
+    {
+        get => _isWorkspaceTab;
+        set
+        {
+            if (SetProperty(ref _isWorkspaceTab, value))
+            {
+                if (value)
+                {
+                    CancelHotkeyCapture();
+                }
+
+                OnPropertyChanged(nameof(IsSettingsTab));
+            }
+        }
+    }
+
+    public bool IsSettingsTab
+    {
+        get => !_isWorkspaceTab;
+        set
+        {
+            if (value)
+            {
+                IsWorkspaceTab = false;
+            }
+        }
+    }
+
+    public bool IsCapturingHotkey
+    {
+        get => _isCapturingHotkey;
+        private set
+        {
+            if (SetProperty(ref _isCapturingHotkey, value))
+            {
+                OnPropertyChanged(nameof(ScrollUpButtonText));
+                OnPropertyChanged(nameof(ScrollDownButtonText));
+            }
+        }
+    }
+
+    public string ScrollUpHotkeyDisplay =>
+        HotkeyGesture.Parse(_settingsService.Current.ScrollUpHotkey, HotkeyGesture.DefaultScrollUp).Display;
+
+    public string ScrollDownHotkeyDisplay =>
+        HotkeyGesture.Parse(_settingsService.Current.ScrollDownHotkey, HotkeyGesture.DefaultScrollDown).Display;
+
+    public string ScrollShortcutHint => $"{ScrollUpHotkeyDisplay} ▲ / {ScrollDownHotkeyDisplay} ▼";
+    public string PreviousHotkeyTooltip =>
+        LocalizationService.Format("TooltipPreviousFormat", ScrollUpHotkeyDisplay);
+    public string NextHotkeyTooltip =>
+        LocalizationService.Format("TooltipNextFormat", ScrollDownHotkeyDisplay);
+    public string HudShortcutLabel => "Ctrl+E+F";
+    public string HudShortcutBadge => $"{HudShortcutLabel} HUD";
+    public string ScrollUpButtonText => IsCapturingHotkey && _captureScrollUp
+        ? LocalizationService.Get("PressKeys")
+        : LocalizationService.Get("Change");
+    public string ScrollDownButtonText => IsCapturingHotkey && !_captureScrollUp
+        ? LocalizationService.Get("PressKeys")
+        : LocalizationService.Get("Change");
+
+    public string SettingsStatusMessage
+    {
+        get => _settingsStatusMessage;
+        private set => SetProperty(ref _settingsStatusMessage, value);
+    }
+
+    public bool HasSettingsStatus
+    {
+        get => _hasSettingsStatus;
+        private set => SetProperty(ref _hasSettingsStatus, value);
+    }
+
+    public bool IsEnglish
+    {
+        get => _localization.Language != LocalizationService.Spanish;
+        set
+        {
+            if (value)
+            {
+                SetLanguage(LocalizationService.English);
+            }
+        }
+    }
+
+    public bool IsSpanish
+    {
+        get => _localization.Language == LocalizationService.Spanish;
+        set
+        {
+            if (value)
+            {
+                SetLanguage(LocalizationService.Spanish);
+            }
+        }
+    }
+
+    public bool IsLayoutAuto
+    {
+        get => PageLayout == PageLayout.Auto;
+        set { if (value) PageLayout = PageLayout.Auto; }
+    }
+
+    public bool IsLayoutColumns
+    {
+        get => PageLayout == PageLayout.Columns;
+        set { if (value) PageLayout = PageLayout.Columns; }
+    }
+
+    public bool IsLayoutRows
+    {
+        get => PageLayout == PageLayout.Rows;
+        set { if (value) PageLayout = PageLayout.Rows; }
+    }
+
+    public bool IsLayoutGrid
+    {
+        get => PageLayout == PageLayout.Grid;
+        set { if (value) PageLayout = PageLayout.Grid; }
     }
 
     public string HotkeyStatusLabel
@@ -359,8 +518,10 @@ public sealed class MainViewModel : ObservableObject, IDisposable
     public string RamValueText => $"{RamPercent:0}";
     public string GpuValueText => GpuDetail == "Unavailable" ? "—" : $"{GpuPercent:0}";
 
-    public string CpuDetail => $"{Environment.ProcessorCount} logical processors";
-    public string RamDetail => _ramTotalGb > 0 ? $"{_ramUsedGb:0.0} / {_ramTotalGb:0.0} GB" : "Reading memory";
+    public string CpuDetail => LocalizationService.Format("CpuDetailFormat", Environment.ProcessorCount);
+    public string RamDetail => _ramTotalGb > 0
+        ? $"{_ramUsedGb:0.0} / {_ramTotalGb:0.0} GB"
+        : LocalizationService.Get("ReadingMemory");
 
     public string GpuDetail
     {
@@ -398,14 +559,30 @@ public sealed class MainViewModel : ObservableObject, IDisposable
     public string SystemStatusText
     {
         get => _systemStatusText;
-        private set => SetProperty(ref _systemStatusText, value);
+        private set
+        {
+            if (SetProperty(ref _systemStatusText, value))
+            {
+                OnPropertyChanged(nameof(SystemStatusLabel));
+            }
+        }
     }
+
+    public string SystemStatusLabel => LocalizationService.Format("SystemFormat", SystemStatusText);
 
     public string LastTelemetryLabel
     {
         get => _lastTelemetryLabel;
-        private set => SetProperty(ref _lastTelemetryLabel, value);
+        private set
+        {
+            if (SetProperty(ref _lastTelemetryLabel, value))
+            {
+                OnPropertyChanged(nameof(TelemetryLabel));
+            }
+        }
     }
+
+    public string TelemetryLabel => LocalizationService.Format("TelemetryFormat", LastTelemetryLabel);
 
     public int WindowCount
     {
@@ -424,7 +601,10 @@ public sealed class MainViewModel : ObservableObject, IDisposable
     public string WindowCountText => WindowCount.ToString("00");
     public string BubbleCountText => WindowCount > 99 ? "99+" : WindowCount.ToString();
 
-    public string WindowSummaryText => $"{WindowCount} windows · {Capsules.Count} capsules";
+    public string WindowSummaryText => LocalizationService.Format(
+        "WindowSummaryFormat",
+        WindowCount,
+        Capsules.Count);
 
     public int ActiveCapsuleWindowCount
     {
@@ -439,8 +619,8 @@ public sealed class MainViewModel : ObservableObject, IDisposable
     }
 
     public string ActiveCapsuleCountText => ActiveCapsuleWindowCount == 1
-        ? "1 window"
-        : $"{ActiveCapsuleWindowCount} windows";
+        ? LocalizationService.Get("WindowCountOne")
+        : LocalizationService.Format("ActivePageCountFormat", ActiveCapsuleWindowCount);
 
     public int VisibleWindowCount
     {
@@ -456,15 +636,22 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         }
     }
 
-    public string VisibleWindowCountText => VisibleWindowCount == 1 ? "1 window" : $"{VisibleWindowCount} windows";
+    public string VisibleWindowCountText => VisibleWindowCount == 1
+        ? LocalizationService.Get("WindowCountOne")
+        : LocalizationService.Format("WindowCountFormat", VisibleWindowCount);
     public bool HasVisibleWindows => VisibleWindowCount > 0;
     public bool HasNoVisibleWindows => VisibleWindowCount == 0;
 
-    public string ActiveCapsuleName => ActiveCapsule?.Name ?? "No capsule";
+    public string ActiveCapsuleName => ActiveCapsule?.Name ?? LocalizationService.Get("NoPage");
     public string ActiveCapsuleDisplayLabel => ActiveCapsule?.TargetDisplayLabel ?? "—";
 
-    public string CapsuleSummary => Capsules.Count == 1 ? "1 capsule" : $"{Capsules.Count} capsules";
-    public string DisplaySummary => Displays.Count == 1 ? "1 display" : $"{Displays.Count} displays";
+    public string CapsuleSummary => Capsules.Count == 1
+        ? LocalizationService.Get("PageCountOne")
+        : LocalizationService.Format("PageCountFormat", Capsules.Count);
+
+    public string DisplaySummary => Displays.Count == 1
+        ? LocalizationService.Get("DisplayCountOne")
+        : LocalizationService.Format("DisplayCountFormat", Displays.Count);
 
     public int ActiveDisplayIndex
     {
@@ -502,7 +689,11 @@ public sealed class MainViewModel : ObservableObject, IDisposable
                 .FirstOrDefault(c => c.Id == ActiveCapsule.Id)!
                 .TargetDisplay = display.DeviceName;
 
-            var result = _windowManager.MoveCapsuleWindowsToDisplay(ActiveCapsule.Id, display);
+            var result = _windowManager.ArrangeCapsuleWindows(
+                ActiveCapsule.Id,
+                display,
+                _settingsService.Current.PageLayout,
+                focusFirst: false);
             SaveSettings();
             OnPropertyChanged();
             OnPropertyChanged(nameof(ActiveCapsuleDisplayLabel));
@@ -513,16 +704,19 @@ public sealed class MainViewModel : ObservableObject, IDisposable
                     DateTimeOffset.Now,
                     ActiveCapsule.Name,
                     OptimizationEventKind.CapsuleRouted,
-                    $"Routed {result.Moved} window(s) to {display.Label} · {display.ResolutionLabel}.",
+                    LocalizationService.Format(
+                        "RoutedWindowsFormat",
+                        result.Moved,
+                        $"{display.Label} · {display.ResolutionLabel}"),
                     true));
                 QueueCapture();
             }
         }
     }
 
-    public string LastOptimizationText => _latestActivity?.Detail ?? "Awaiting first policy decision";
+    public string LastOptimizationText => _latestActivity?.Detail ?? LocalizationService.Get("AwaitingPolicyDecision");
 
-    public string LastOptimizationProcess => _latestActivity?.ProcessName ?? "LOCAL POLICY";
+    public string LastOptimizationProcess => _latestActivity?.ProcessName ?? LocalizationService.Get("LocalPolicyLabel");
 
     public string LastOptimizationTime => _latestActivity?.TimeLabel ?? "—";
 
@@ -537,52 +731,69 @@ public sealed class MainViewModel : ObservableObject, IDisposable
     public void SetHotkeyStatus(bool ready, string? error = null)
     {
         HotkeyReady = ready;
-        HotkeyStatusLabel = ready ? "GLOBAL HOTKEYS READY" : "HOTKEYS UNAVAILABLE";
+        HotkeyStatusLabel = LocalizationService.Get(ready ? "HotkeysReady" : "HotkeysUnavailable");
         HotkeyDetail = ready
-            ? "Ctrl+E / Ctrl+F scroll · Ctrl+E+F HUD"
+            ? LocalizationService.Get("HotkeyDetail")
             : error ?? "Another application may be capturing keyboard input.";
         OnPropertyChanged(nameof(HotkeyReady));
     }
 
-    public void ActivateCapsule(CapsuleItemViewModel capsule)
+    public void ActivateCapsule(CapsuleItemViewModel capsule, bool focusFirst = false)
     {
-        if (_isDisposed || ReferenceEquals(capsule, _activeCapsule))
+        if (_isDisposed)
         {
-            if (ReferenceEquals(capsule, _activeCapsule))
-            {
-                RefreshFilter();
-            }
-
             return;
         }
 
-        _activeCapsule = capsule;
-        _settingsService.Current.ActiveCapsuleId = capsule.Id;
-        UpdateActiveFlags();
-        OnPropertyChanged(nameof(ActiveCapsule));
-        OnPropertyChanged(nameof(ActiveCapsuleName));
-        OnPropertyChanged(nameof(ActiveCapsuleDisplayLabel));
-        OnPropertyChanged(nameof(ActiveCapsuleCountText));
-        OnPropertyChanged(nameof(ActiveDisplayIndex));
+        var changed = !ReferenceEquals(capsule, _activeCapsule);
+        if (changed)
+        {
+            _activeCapsule = capsule;
+            _settingsService.Current.ActiveCapsuleId = capsule.Id;
+            UpdateActiveFlags();
+            OnPropertyChanged(nameof(ActiveCapsule));
+            OnPropertyChanged(nameof(ActiveCapsuleName));
+            OnPropertyChanged(nameof(ActiveCapsuleDisplayLabel));
+            OnPropertyChanged(nameof(ActiveCapsuleCountText));
+            OnPropertyChanged(nameof(ActiveDisplayIndex));
 
-        _windowManager.SetActiveCapsule(capsule.Id);
-        _optimizer.NotifyActiveCapsuleChanged(capsule.Id);
+            _windowManager.SetActiveCapsule(capsule.Id);
+            _optimizer.NotifyActiveCapsuleChanged(capsule.Id);
+        }
 
         var target = ResolveDisplay(capsule.Model.TargetDisplay);
         if (target is not null)
         {
-            var move = _windowManager.MoveCapsuleWindowsToDisplay(capsule.Id, target);
+            var move = _windowManager.ArrangeCapsuleWindows(
+                capsule.Id,
+                target,
+                _settingsService.Current.PageLayout,
+                focusFirst);
             if (move.Moved > 0)
             {
-                _log.Info($"Activated capsule '{capsule.Name}' and routed {move.Moved} window(s) to {target.Label}.");
+                _log.Info($"Activated page '{capsule.Name}' and tiled {move.Moved} window(s) on {target.Label}.");
                 QueueCapture();
             }
         }
 
-        SaveSettings();
+        if (changed)
+        {
+            SaveSettings();
+        }
+
         RefreshFilter();
         OnPropertyChanged(nameof(ActiveCapsuleDisplayLabel));
-        HudFocusRequested?.Invoke(this, EventArgs.Empty);
+
+        if (!focusFirst)
+        {
+            HudFocusRequested?.Invoke(this, EventArgs.Empty);
+        }
+    }
+
+    public void GoToPage(CapsuleItemViewModel capsule)
+    {
+        ActivateCapsule(capsule, focusFirst: true);
+        CollapseRequested?.Invoke(this, EventArgs.Empty);
     }
 
     public void FocusWindow(WindowItemViewModel window)
@@ -602,6 +813,123 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         CollapseRequested?.Invoke(this, EventArgs.Empty);
     }
 
+    public void SetLanguage(string language)
+    {
+        if (string.Equals(_localization.Language, language, StringComparison.OrdinalIgnoreCase))
+        {
+            return;
+        }
+
+        _localization.Apply(language);
+        _settingsService.Current.Language = _localization.Language;
+        SaveSettings();
+        OnPropertyChanged(nameof(IsEnglish));
+        OnPropertyChanged(nameof(IsSpanish));
+        OnPropertyChanged(nameof(ScrollUpButtonText));
+        OnPropertyChanged(nameof(ScrollDownButtonText));
+    }
+
+    public void BeginHotkeyCapture(bool scrollUp)
+    {
+        _captureScrollUp = scrollUp;
+        IsCapturingHotkey = true;
+        HasSettingsStatus = false;
+        SettingsStatusMessage = string.Empty;
+        HotkeyCaptureStateChanged?.Invoke(true);
+        OnPropertyChanged(nameof(ScrollUpButtonText));
+        OnPropertyChanged(nameof(ScrollDownButtonText));
+    }
+
+    public void CancelHotkeyCapture()
+    {
+        if (!IsCapturingHotkey)
+        {
+            return;
+        }
+
+        IsCapturingHotkey = false;
+        HotkeyCaptureStateChanged?.Invoke(false);
+        OnPropertyChanged(nameof(ScrollUpButtonText));
+        OnPropertyChanged(nameof(ScrollDownButtonText));
+    }
+
+    public bool TryCaptureHotkey(Key key, ModifierKeys modifiers, bool windows = false)
+    {
+        if (!IsCapturingHotkey)
+        {
+            return false;
+        }
+
+        var gesture = HotkeyGesture.From(key, modifiers, windows);
+        if (!gesture.IsValid)
+        {
+            SetSettingsStatus(LocalizationService.Get("NoModifierWarning"));
+            return true;
+        }
+
+        var currentUp = HotkeyGesture.Parse(
+            _settingsService.Current.ScrollUpHotkey,
+            HotkeyGesture.DefaultScrollUp);
+        var currentDown = HotkeyGesture.Parse(
+            _settingsService.Current.ScrollDownHotkey,
+            HotkeyGesture.DefaultScrollDown);
+        var other = _captureScrollUp ? currentDown : currentUp;
+        if (gesture == other)
+        {
+            SetSettingsStatus(LocalizationService.Get("DuplicateHotkeyWarning"));
+            return true;
+        }
+
+        if (_captureScrollUp)
+        {
+            _settingsService.Current.ScrollUpHotkey = gesture.Display;
+        }
+        else
+        {
+            _settingsService.Current.ScrollDownHotkey = gesture.Display;
+        }
+
+        SaveSettings();
+        IsCapturingHotkey = false;
+        HotkeyCaptureStateChanged?.Invoke(false);
+        HotkeysChanged?.Invoke(this, EventArgs.Empty);
+        OnPropertyChanged(nameof(ScrollUpHotkeyDisplay));
+        OnPropertyChanged(nameof(ScrollDownHotkeyDisplay));
+        OnPropertyChanged(nameof(ScrollShortcutHint));
+        OnPropertyChanged(nameof(PreviousHotkeyTooltip));
+        OnPropertyChanged(nameof(NextHotkeyTooltip));
+        OnPropertyChanged(nameof(ScrollUpButtonText));
+        OnPropertyChanged(nameof(ScrollDownButtonText));
+        SetSettingsStatus(LocalizationService.Get("SettingsSaved"));
+        return true;
+    }
+
+    public void ResetHotkeyDefaults()
+    {
+        _settingsService.Current.ScrollUpHotkey = HotkeyGesture.DefaultScrollUp.Display;
+        _settingsService.Current.ScrollDownHotkey = HotkeyGesture.DefaultScrollDown.Display;
+        _settingsService.Current.PageLayout = PageLayout.Auto;
+        SaveSettings();
+        HotkeysChanged?.Invoke(this, EventArgs.Empty);
+        OnPropertyChanged(nameof(ScrollUpHotkeyDisplay));
+        OnPropertyChanged(nameof(ScrollDownHotkeyDisplay));
+        OnPropertyChanged(nameof(ScrollShortcutHint));
+        OnPropertyChanged(nameof(PreviousHotkeyTooltip));
+        OnPropertyChanged(nameof(NextHotkeyTooltip));
+        OnPropertyChanged(nameof(PageLayout));
+        OnPropertyChanged(nameof(IsLayoutAuto));
+        OnPropertyChanged(nameof(IsLayoutColumns));
+        OnPropertyChanged(nameof(IsLayoutRows));
+        OnPropertyChanged(nameof(IsLayoutGrid));
+        SetSettingsStatus(LocalizationService.Get("SettingsSaved"));
+    }
+
+    private void SetSettingsStatus(string message)
+    {
+        SettingsStatusMessage = message;
+        HasSettingsStatus = !string.IsNullOrWhiteSpace(message);
+    }
+
     public void RequestWindowNavigation(int direction) =>
         WindowNavigationRequested?.Invoke(direction);
 
@@ -610,8 +938,8 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         _currentNavigation = result;
         if (result is null)
         {
-            CurrentWindowTitle = "No window selected";
-            CurrentWindowProcess = "Ctrl+E / Ctrl+F scrolls windows";
+            CurrentWindowTitle = LocalizationService.Get("NoWindowSelected");
+            CurrentWindowProcess = LocalizationService.Get("ScrollHint");
             WindowScrollPositionText = "—";
             HasScrollWindow = false;
         }
@@ -643,8 +971,8 @@ public sealed class MainViewModel : ObservableObject, IDisposable
             DateTimeOffset.Now,
             window.ProcessName,
             OptimizationEventKind.WindowReassigned,
-            $"Window assigned to capsule '{capsule.Name}'" +
-            (target is null ? "." : $" on {target.Label}."),
+            LocalizationService.Format("WindowAssignedFormat", capsule.Name) +
+            (target is null ? string.Empty : $" · {target.Label}"),
             true));
     }
 
@@ -668,7 +996,10 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         };
 
         _settingsService.Current.Capsules.Add(definition);
-        var vm = new CapsuleItemViewModel(definition, $"{display.Label} · {display.ResolutionLabel}");
+        var vm = new CapsuleItemViewModel(
+            definition,
+            $"{display.Label} · {display.ResolutionLabel}",
+            Capsules.Count + 1);
         Capsules.Add(vm);
         _windowManager.ConfigureCapsules(_settingsService.Current.Capsules, ActiveCapsule?.Id ?? vm.Id);
         SaveSettings();
@@ -679,7 +1010,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
             DateTimeOffset.Now,
             definition.Name,
             OptimizationEventKind.PolicyStarted,
-            "New workflow capsule created.",
+            LocalizationService.Get("NewPageCreated"),
             true));
     }
 
@@ -765,6 +1096,20 @@ public sealed class MainViewModel : ObservableObject, IDisposable
     private void OnWindowNavigated(object? sender, WindowNavigationResult e) =>
         Dispatch(() => ApplyNavigation(e));
 
+    private void OnLanguageChanged(object? sender, EventArgs e)
+    {
+        OnPropertyChanged(null);
+        foreach (var window in Windows)
+        {
+            window.RefreshLocalization();
+        }
+
+        foreach (var capsule in Capsules)
+        {
+            capsule.RefreshLocalization();
+        }
+    }
+
     private void OnTelemetrySample(TelemetrySnapshot sample)
     {
         Dispatch(() => ApplyTelemetry(sample));
@@ -779,7 +1124,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         if (sample.GpuPercent.HasValue)
         {
             GpuPercent = Math.Round(sample.GpuPercent.Value, 1);
-            GpuDetail = "GPU engine utilization";
+            GpuDetail = LocalizationService.Get("GpuEngine");
         }
         else
         {
@@ -797,11 +1142,12 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         RamHistory = _ramHistory.ToArray();
         GpuHistory = _gpuHistory.ToArray();
 
-        SystemStatusText = sample.RamPercent >= 88 || sample.CpuPercent >= 88
-            ? "Pressure"
-            : sample.RamPercent >= 70 || sample.CpuPercent >= 70
-                ? "Elevated"
-                : "Nominal";
+        SystemStatusText = LocalizationService.Get(
+            sample.RamPercent >= 88 || sample.CpuPercent >= 88
+                ? "StatusPressure"
+                : sample.RamPercent >= 70 || sample.CpuPercent >= 70
+                    ? "StatusElevated"
+                    : "StatusNominal");
         LastTelemetryLabel = sample.Timestamp.ToString("HH:mm:ss");
         OnPropertyChanged(nameof(SystemStatusText));
     }
@@ -916,6 +1262,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         _telemetry.SampleReceived -= OnTelemetrySample;
         _optimizer.ActivityReported -= OnOptimizerActivity;
         _navigator.Navigated -= OnWindowNavigated;
+        _localization.LanguageChanged -= OnLanguageChanged;
     }
 
     public sealed class MainCommands
@@ -933,6 +1280,13 @@ public sealed class MainViewModel : ObservableObject, IDisposable
                 }
             });
             AddCapsule = new RelayCommand(vm.AddCapsule);
+            GoToPage = new RelayCommand(p =>
+            {
+                if (p is CapsuleItemViewModel capsule)
+                {
+                    vm.GoToPage(capsule);
+                }
+            });
             FocusWindow = new RelayCommand(p =>
             {
                 if (p is WindowItemViewModel window)
@@ -959,9 +1313,15 @@ public sealed class MainViewModel : ObservableObject, IDisposable
             ClearSearch = new RelayCommand(() => vm.SearchText = string.Empty);
             NavigatePreviousWindow = new RelayCommand(() => vm.RequestWindowNavigation(-1));
             NavigateNextWindow = new RelayCommand(() => vm.RequestWindowNavigation(1));
+            ShowWorkspace = new RelayCommand(() => vm.IsWorkspaceTab = true);
+            ShowSettings = new RelayCommand(() => vm.IsWorkspaceTab = false);
+            CaptureScrollUp = new RelayCommand(() => vm.BeginHotkeyCapture(true));
+            CaptureScrollDown = new RelayCommand(() => vm.BeginHotkeyCapture(false));
+            ResetSettings = new RelayCommand(vm.ResetHotkeyDefaults);
         }
 
         public RelayCommand ActivateCapsule { get; }
+        public RelayCommand GoToPage { get; }
         public RelayCommand AddCapsule { get; }
         public RelayCommand FocusWindow { get; }
         public RelayCommand ToggleTheme { get; }
@@ -973,5 +1333,10 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         public RelayCommand ClearSearch { get; }
         public RelayCommand NavigatePreviousWindow { get; }
         public RelayCommand NavigateNextWindow { get; }
+        public RelayCommand ShowWorkspace { get; }
+        public RelayCommand ShowSettings { get; }
+        public RelayCommand CaptureScrollUp { get; }
+        public RelayCommand CaptureScrollDown { get; }
+        public RelayCommand ResetSettings { get; }
     }
 }

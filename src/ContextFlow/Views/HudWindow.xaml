@@ -18,7 +18,8 @@
         SnapsToDevicePixels="True"
         UseLayoutRounding="True"
         FontFamily="{StaticResource BodyFontFamily}"
-        TextOptions.TextFormattingMode="Ideal">
+        TextOptions.TextFormattingMode="Ideal"
+        PreviewKeyDown="Window_OnPreviewKeyDown">
 
     <shell:WindowChrome.WindowChrome>
         <shell:WindowChrome CaptionHeight="72"
@@ -109,12 +110,29 @@
                                        FontSize="18"
                                        FontWeight="SemiBold"
                                        Foreground="{DynamicResource TextPrimaryBrush}" />
-                            <TextBlock Text="CONTEXTUAL ENVIRONMENT MANAGER"
+                            <TextBlock Text="{DynamicResource BrandSubtitle}"
                                        Margin="0,2,0,0"
                                        FontSize="8"
                                        FontWeight="SemiBold"
                                        Foreground="{DynamicResource TextTertiaryBrush}" />
                         </StackPanel>
+                    </StackPanel>
+
+                    <StackPanel Grid.Column="1"
+                                Orientation="Horizontal"
+                                HorizontalAlignment="Center"
+                                VerticalAlignment="Center">
+                        <RadioButton GroupName="HudTabs"
+                                     Style="{StaticResource FilterChipStyle}"
+                                     shell:WindowChrome.IsHitTestVisibleInChrome="True"
+                                     Content="{DynamicResource TabWorkspace}"
+                                     IsChecked="{Binding IsWorkspaceTab, Mode=TwoWay}" />
+                        <RadioButton GroupName="HudTabs"
+                                     Margin="8,0,0,0"
+                                     Style="{StaticResource FilterChipStyle}"
+                                     shell:WindowChrome.IsHitTestVisibleInChrome="True"
+                                     Content="{DynamicResource TabSettings}"
+                                     IsChecked="{Binding IsSettingsTab, Mode=TwoWay}" />
                     </StackPanel>
 
                     <StackPanel Grid.Column="2"
@@ -151,7 +169,7 @@
                                         </Style>
                                     </Ellipse.Style>
                                 </Ellipse>
-                                <TextBlock Text="LOCAL AI"
+                                <TextBlock Text="{DynamicResource LocalAi}"
                                            FontSize="8"
                                            FontWeight="SemiBold"
                                            Foreground="{DynamicResource TextTertiaryBrush}" />
@@ -173,16 +191,16 @@
                                 FontSize="15"
                                 AutomationProperties.Name="Toggle light or dark theme"
                                 Command="{Binding Commands.ToggleTheme}"
-                                ToolTip="Switch light / dark theme" />
+                                ToolTip="{DynamicResource TooltipTheme}" />
                         <Button Height="32"
                                 Margin="8,0,8,0"
                                 Padding="13,0"
                                 Style="{StaticResource PrimaryButtonStyle}"
                                 shell:WindowChrome.IsHitTestVisibleInChrome="True"
-                                Content="OPTIMIZE NOW"
+                                Content="{DynamicResource OptimizeNow}"
                                 FontSize="9.5"
                                 Command="{Binding Commands.OptimizeNow}"
-                                ToolTip="Run one local AI optimization pass now (Ctrl+Shift+F)" />
+                                ToolTip="{DynamicResource TooltipOptimize}" />
                         <Button x:Name="MaximizeButton"
                                 Margin="0,0,8,0"
                                 Style="{StaticResource IconButtonStyle}"
@@ -192,7 +210,7 @@
                                 FontSize="14"
                                 AutomationProperties.Name="Maximize or restore HUD"
                                 Click="MaximizeButton_OnClick"
-                                ToolTip="Maximize / restore (double-click header)" />
+                                ToolTip="{DynamicResource TooltipMaximize}" />
                         <Button Style="{StaticResource IconButtonStyle}"
                                 shell:WindowChrome.IsHitTestVisibleInChrome="True"
                                 Content="—"
@@ -200,12 +218,14 @@
                                 FontSize="16"
                                 AutomationProperties.Name="Collapse HUD to floating bubble"
                                 Command="{Binding Commands.Collapse}"
-                                ToolTip="Collapse to floating bubble (Esc)" />
+                                ToolTip="{DynamicResource TooltipCollapse}" />
                     </StackPanel>
                 </Grid>
 
                 <!-- ============================ BODY ============================ -->
-                <Grid Grid.Row="1" Margin="18,16,18,10">
+                <Grid Grid.Row="1"
+                      Margin="18,16,18,10"
+                      Visibility="{Binding IsWorkspaceTab, Converter={StaticResource BooleanToVisibility}}">
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="244" />
                         <ColumnDefinition Width="16" />
@@ -225,7 +245,7 @@
 
                         <Grid Grid.Row="0" Margin="2,0,2,8">
                             <StackPanel>
-                                <TextBlock Text="WORKFLOW CAPSULES" Style="{StaticResource EyebrowTextStyle}" />
+                                <TextBlock Text="{DynamicResource WorkflowPages}" Style="{StaticResource EyebrowTextStyle}" />
                                 <TextBlock Text="{Binding CapsuleSummary}"
                                            Margin="0,3,0,0"
                                            FontSize="10"
@@ -240,7 +260,7 @@
                                     FontSize="17"
                                     AutomationProperties.Name="Create workflow capsule"
                                     Command="{Binding Commands.AddCapsule}"
-                                    ToolTip="Create a new workflow capsule" />
+                                    ToolTip="{DynamicResource TooltipAddPage}" />
                         </Grid>
 
                         <Border Grid.Row="1"
@@ -257,7 +277,7 @@
                                                     AutomationProperties.Name="{Binding Name, StringFormat=Activate capsule {0}}"
                                                     Command="{Binding DataContext.Commands.ActivateCapsule, RelativeSource={RelativeSource AncestorType={x:Type Window}}}"
                                                     CommandParameter="{Binding}"
-                                                    ToolTip="Activate this capsule and route its windows to the target display">
+                                                    ToolTip="{DynamicResource TooltipActivatePage}">
                                                 <Grid>
                                                     <Grid.ColumnDefinitions>
                                                         <ColumnDefinition Width="4" />
@@ -278,7 +298,7 @@
                                                                     Padding="5,1"
                                                                     Background="{Binding AccentSoftBrush}"
                                                                     CornerRadius="4">
-                                                                <TextBlock Text="ACTIVE"
+                                                                <TextBlock Text="{DynamicResource Active}"
                                                                            FontSize="7.5"
                                                                            FontWeight="Bold"
                                                                            Foreground="{Binding AccentBrush}">
@@ -342,9 +362,9 @@
                                 CornerRadius="14">
                             <StackPanel>
                                 <Grid>
-                                    <TextBlock Text="ROUTE ACTIVE CAPSULE" Style="{StaticResource EyebrowTextStyle}" />
+                                    <TextBlock Text="{DynamicResource RouteActivePage}" Style="{StaticResource EyebrowTextStyle}" />
                                     <TextBlock HorizontalAlignment="Right"
-                                               Text="DRAG"
+                                               Text="{DynamicResource Drag}"
                                                FontSize="7.5"
                                                FontWeight="SemiBold"
                                                Foreground="{DynamicResource TextTertiaryBrush}" />
@@ -376,7 +396,7 @@
                                 CornerRadius="14">
                             <StackPanel>
                                 <Grid>
-                                    <TextBlock Text="LOCAL AI OPTIMIZER" Style="{StaticResource EyebrowTextStyle}" />
+                                    <TextBlock Text="{DynamicResource LocalAiOptimizer}" Style="{StaticResource EyebrowTextStyle}" />
                                     <Border HorizontalAlignment="Right"
                                             Padding="6,1"
                                             Background="{DynamicResource AccentSoftBrush}"
@@ -387,7 +407,7 @@
                                                    Foreground="{DynamicResource AccentBrush}" />
                                     </Border>
                                 </Grid>
-                                <TextBlock Text="Offline policy · no cloud calls"
+                                <TextBlock Text="{DynamicResource OfflinePolicy}"
                                            Margin="0,3,0,0"
                                            FontSize="9"
                                            Foreground="{DynamicResource TextTertiaryBrush}" />
@@ -398,10 +418,10 @@
                                         <ColumnDefinition Width="Auto" />
                                     </Grid.ColumnDefinitions>
                                     <StackPanel>
-                                        <TextBlock Text="Auto optimize"
+                                        <TextBlock Text="{DynamicResource AutoOptimize}"
                                                    FontSize="10.5"
                                                    FontWeight="SemiBold" />
-                                        <TextBlock Text="Throttle idle capsules"
+                                        <TextBlock Text="{DynamicResource ThrottleIdlePages}"
                                                    FontSize="8.5"
                                                    Foreground="{DynamicResource TextSecondaryBrush}" />
                                     </StackPanel>
@@ -410,7 +430,7 @@
                                                   AutomationProperties.Name="Toggle automatic AI optimization"
                                                   IsChecked="{Binding IsOptimizationEnabled, Mode=TwoWay}"
                                                   VerticalAlignment="Center"
-                                                  ToolTip="Enable local AI priority and working-set optimization" />
+                                                  ToolTip="{DynamicResource TooltipAutoOptimize}" />
                                 </Grid>
 
                                 <Grid Margin="0,9,0,0">
@@ -419,10 +439,10 @@
                                         <ColumnDefinition Width="Auto" />
                                     </Grid.ColumnDefinitions>
                                     <StackPanel>
-                                        <TextBlock Text="Capsule isolation"
+                                        <TextBlock Text="{DynamicResource PageIsolation}"
                                                    FontSize="10.5"
                                                    FontWeight="SemiBold" />
-                                        <TextBlock Text="Cloak or minimize hidden capsules"
+                                        <TextBlock Text="{DynamicResource IsolationDetail}"
                                                    FontSize="8.5"
                                                    Foreground="{DynamicResource TextSecondaryBrush}" />
                                     </StackPanel>
@@ -440,10 +460,10 @@
                                             Padding="10,0"
                                             Style="{StaticResource SecondaryButtonStyle}"
                                             FontSize="9"
-                                            Content="RUN PASS"
+                                            Content="{DynamicResource RunPass}"
                                             Command="{Binding Commands.OptimizeNow}" />
                                     <StackPanel VerticalAlignment="Center">
-                                        <TextBlock Text="Working set + priority"
+                                        <TextBlock Text="{DynamicResource WorkingSetPriority}"
                                                    FontSize="8.5"
                                                    Foreground="{DynamicResource TextSecondaryBrush}" />
                                         <TextBlock Text="{Binding IsolationStatusText}"
@@ -484,7 +504,7 @@
                                             <Ellipse Width="6" Height="6" Margin="0,0,6,0" Fill="{DynamicResource CpuBrush}" />
                                             <TextBlock Text="CPU" Style="{StaticResource EyebrowTextStyle}" />
                                         </StackPanel>
-                                        <TextBlock Text="LIVE"
+                                        <TextBlock Text="{DynamicResource Live}"
                                                    HorizontalAlignment="Right"
                                                    FontSize="7.5"
                                                    FontWeight="SemiBold"
@@ -536,7 +556,7 @@
                                     <Grid>
                                         <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
                                             <Ellipse Width="6" Height="6" Margin="0,0,6,0" Fill="{DynamicResource RamBrush}" />
-                                            <TextBlock Text="MEMORY" Style="{StaticResource EyebrowTextStyle}" />
+                                            <TextBlock Text="{DynamicResource Memory}" Style="{StaticResource EyebrowTextStyle}" />
                                         </StackPanel>
                                         <TextBlock Text="RAM"
                                                    HorizontalAlignment="Right"
@@ -648,7 +668,7 @@
                                         <RowDefinition Height="Auto" />
                                     </Grid.RowDefinitions>
                                     <DockPanel>
-                                        <TextBlock Text="MANAGED WINDOWS"
+                                        <TextBlock Text="{DynamicResource ManagedWindows}"
                                                    FontSize="9"
                                                    FontWeight="SemiBold"
                                                    Foreground="#D9FFFFFF" />
@@ -671,7 +691,7 @@
                                     </StackPanel>
                                     <StackPanel Grid.Row="2" Orientation="Horizontal">
                                         <Border Width="5" Height="5" CornerRadius="2.5" Background="#F2C45A" VerticalAlignment="Center" />
-                                        <TextBlock Text=" ACROSS ALL CAPSULES"
+                                        <TextBlock Text="{DynamicResource AcrossAllPages}"
                                                    FontSize="7.5"
                                                    FontWeight="SemiBold"
                                                    Foreground="#D9FFFFFF" />
@@ -696,9 +716,9 @@
                                         <ColumnDefinition Width="Auto" />
                                     </Grid.ColumnDefinitions>
                                     <StackPanel VerticalAlignment="Center">
-                                        <TextBlock Text="PROCESS MATRIX" Style="{StaticResource EyebrowTextStyle}" />
+                                        <TextBlock Text="{DynamicResource ProcessMatrix}" Style="{StaticResource EyebrowTextStyle}" />
                                         <StackPanel Orientation="Horizontal" Margin="0,2,0,0">
-                                            <TextBlock Text="Application windows"
+                                            <TextBlock Text="{DynamicResource ApplicationWindows}"
                                                        FontFamily="{StaticResource DisplayFontFamily}"
                                                        FontSize="14"
                                                        FontWeight="SemiBold" />
@@ -725,7 +745,7 @@
                                                        FontFamily="{StaticResource MonoFontFamily}"
                                                        FontSize="8"
                                                        Foreground="{DynamicResource TextTertiaryBrush}" />
-                                            <TextBlock Text="  ·  Ctrl+E ▲  Ctrl+F ▼"
+                                            <TextBlock Text="{Binding ScrollShortcutHint}"
                                                        FontSize="7.5"
                                                        Foreground="{DynamicResource TextTertiaryBrush}" />
                                         </StackPanel>
@@ -741,7 +761,7 @@
                                                 FontSize="9"
                                                 AutomationProperties.Name="Previous managed window"
                                                 Command="{Binding Commands.NavigatePreviousWindow}"
-                                                ToolTip="Previous window (Ctrl+E)" />
+                                                ToolTip="{Binding PreviousHotkeyTooltip}" />
                                         <Button Width="28"
                                                 Height="28"
                                                 Margin="0,0,8,0"
@@ -751,7 +771,7 @@
                                                 FontSize="9"
                                                 AutomationProperties.Name="Next managed window"
                                                 Command="{Binding Commands.NavigateNextWindow}"
-                                                ToolTip="Next window (Ctrl+F)" />
+                                                ToolTip="{Binding NextHotkeyTooltip}" />
                                         <Border Width="158"
                                                 Height="28"
                                                 Margin="0,0,8,0"
@@ -776,8 +796,8 @@
                                                              Text="{Binding SearchText, UpdateSourceTrigger=PropertyChanged}"
                                                              VerticalAlignment="Center"
                                                              AutomationProperties.Name="Filter managed windows"
-                                                             ToolTip="Search by title, process, or capsule" />
-                                                    <TextBlock Text="Filter windows…"
+                                                             ToolTip="{DynamicResource TooltipSearch}" />
+                                                    <TextBlock Text="{DynamicResource FilterWindows}"
                                                                IsHitTestVisible="False"
                                                                VerticalAlignment="Center"
                                                                FontSize="9.5"
@@ -796,12 +816,12 @@
                                                 </Grid>
                                             </Grid>
                                         </Border>
-                                        <RadioButton Content="ALL"
+                                        <RadioButton Content="{DynamicResource All}"
                                                      GroupName="WindowFilter"
                                                      Margin="0,0,5,0"
                                                      Style="{StaticResource FilterChipStyle}"
                                                      IsChecked="{Binding IsAllFilterSelected, Mode=TwoWay}" />
-                                        <RadioButton Content="CAPSULE"
+                                        <RadioButton Content="{DynamicResource PageFilter}"
                                                      GroupName="WindowFilter"
                                                      Style="{StaticResource FilterChipStyle}"
                                                      IsChecked="{Binding IsCapsuleFilterSelected, Mode=TwoWay}" />
@@ -823,27 +843,27 @@
                                             <ColumnDefinition Width="28" />
                                         </Grid.ColumnDefinitions>
                                         <TextBlock Grid.Column="1"
-                                                   Text="WINDOW"
+                                                   Text="{DynamicResource WindowColumn}"
                                                    Style="{StaticResource EyebrowTextStyle}"
                                                    FontSize="8"
                                                    VerticalAlignment="Center" />
                                         <TextBlock Grid.Column="2"
-                                                   Text="CAPSULE"
+                                                   Text="{DynamicResource PageColumn}"
                                                    Style="{StaticResource EyebrowTextStyle}"
                                                    FontSize="8"
                                                    VerticalAlignment="Center" />
                                         <TextBlock Grid.Column="3"
-                                                   Text="MONITOR"
+                                                   Text="{DynamicResource MonitorColumn}"
                                                    Style="{StaticResource EyebrowTextStyle}"
                                                    FontSize="8"
                                                    VerticalAlignment="Center" />
                                         <TextBlock Grid.Column="4"
-                                                   Text="POSITION"
+                                                   Text="{DynamicResource PositionColumn}"
                                                    Style="{StaticResource EyebrowTextStyle}"
                                                    FontSize="8"
                                                    VerticalAlignment="Center" />
                                         <TextBlock Grid.Column="5"
-                                                   Text="STATE"
+                                                   Text="{DynamicResource StateColumn}"
                                                    Style="{StaticResource EyebrowTextStyle}"
                                                    FontSize="8"
                                                    VerticalAlignment="Center" />
@@ -924,7 +944,7 @@
                                                             VerticalAlignment="Center"
                                                             AutomationProperties.Name="Change window capsule assignment"
                                                             Click="CapsulePill_OnClick"
-                                                            ToolTip="Assign this window to another capsule">
+                                                            ToolTip="{DynamicResource TooltipAssignPage}">
                                                         <Border Height="21"
                                                                 Margin="0,0,9,0"
                                                                 Padding="7,0"
@@ -999,7 +1019,7 @@
                                                             AutomationProperties.Name="Focus window"
                                                             Command="{Binding DataContext.Commands.FocusWindow, RelativeSource={RelativeSource AncestorType={x:Type Window}}}"
                                                             CommandParameter="{Binding}"
-                                                            ToolTip="Focus window and collapse HUD" />
+                                                            ToolTip="{DynamicResource TooltipFocus}" />
                                                 </Grid>
                                             </Border>
                                         </DataTemplate>
@@ -1023,12 +1043,12 @@
                                                        FontSize="16"
                                                        Foreground="{DynamicResource TextTertiaryBrush}" />
                                         </Border>
-                                        <TextBlock Text="No windows match this view"
+                                        <TextBlock Text="{DynamicResource NoWindows}"
                                                    Margin="0,8,0,0"
                                                    HorizontalAlignment="Center"
                                                    FontSize="10.5"
                                                    FontWeight="SemiBold" />
-                                        <TextBlock Text="Switch capsules or clear the filter."
+                                        <TextBlock Text="{DynamicResource NoWindowsDetail}"
                                                    Margin="0,2,0,0"
                                                    HorizontalAlignment="Center"
                                                    FontSize="9"
@@ -1039,13 +1059,13 @@
                                 <Grid Grid.Row="3" Margin="16,0">
                                     <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
                                         <Ellipse Width="5" Height="5" Fill="{DynamicResource AccentBrush}" VerticalAlignment="Center" />
-                                        <TextBlock Text="  Double-click a row to focus its window"
+                                        <TextBlock Text="{DynamicResource DoubleClickHint}"
                                                    FontSize="8.5"
                                                    Foreground="{DynamicResource TextSecondaryBrush}" />
                                     </StackPanel>
                                     <TextBlock HorizontalAlignment="Right"
                                                VerticalAlignment="Center"
-                                               Text="{Binding SystemStatusText, StringFormat=SYSTEM {0}}"
+                                               Text="{Binding SystemStatusLabel}"
                                                FontSize="7.5"
                                                FontWeight="SemiBold"
                                                Foreground="{DynamicResource TextTertiaryBrush}" />
@@ -1071,8 +1091,8 @@
                                 </Grid.RowDefinitions>
                                 <Grid Margin="14,12,14,8">
                                     <StackPanel>
-                                        <TextBlock Text="CANVAS OVERVIEW" Style="{StaticResource EyebrowTextStyle}" />
-                                        <TextBlock Text="Workflow topology"
+                                        <TextBlock Text="{DynamicResource PageMapEyebrow}" Style="{StaticResource EyebrowTextStyle}" />
+                                        <TextBlock Text="{DynamicResource PageMapTitle}"
                                                    Margin="0,2,0,0"
                                                    FontFamily="{StaticResource DisplayFontFamily}"
                                                    FontSize="13"
@@ -1083,33 +1103,85 @@
                                             Padding="7,2"
                                             Background="{DynamicResource AccentSoftBrush}"
                                             CornerRadius="5">
-                                        <TextBlock Text="∞ INFINITE"
+                                        <TextBlock Text="{DynamicResource Infinite}"
                                                    FontSize="7.5"
                                                    FontWeight="Bold"
                                                    Foreground="{DynamicResource AccentBrush}" />
                                     </Border>
                                 </Grid>
-                                <Border Grid.Row="1"
-                                        Margin="14,0,14,0"
-                                        Background="{DynamicResource SurfaceSoftBrush}"
-                                        BorderBrush="{DynamicResource BorderBrush}"
-                                        BorderThickness="1"
-                                        CornerRadius="12"
-                                        ClipToBounds="True">
-                                    <controls:WorkspaceMap ItemsSource="{Binding Capsules}"
-                                                           AutomationProperties.Name="Infinite canvas overview"
-                                                           ActiveCapsule="{Binding ActiveCapsule}"
-                                                           ActivateCommand="{Binding Commands.ActivateCapsule}"
-                                                           SurfaceBrush="{DynamicResource SurfaceBrush}"
-                                                           BorderBrush="{DynamicResource BorderBrush}"
-                                                           TextPrimaryBrush="{DynamicResource TextPrimaryBrush}"
-                                                           TextSecondaryBrush="{DynamicResource TextSecondaryBrush}"
-                                                           AccentBrush="{DynamicResource AccentBrush}"
-                                                           GridBrush="{DynamicResource GridBrush}" />
-                                </Border>
+                                <ScrollViewer Grid.Row="1"
+                                              Margin="10,0,10,0"
+                                              VerticalScrollBarVisibility="Auto"
+                                              HorizontalScrollBarVisibility="Disabled"
+                                              Focusable="False">
+                                    <ItemsControl ItemsSource="{Binding Capsules}">
+                                        <ItemsControl.ItemsPanel>
+                                            <ItemsPanelTemplate>
+                                                <UniformGrid Columns="2" />
+                                            </ItemsPanelTemplate>
+                                        </ItemsControl.ItemsPanel>
+                                        <ItemsControl.ItemTemplate>
+                                            <DataTemplate>
+                                                <Button Style="{StaticResource PageCardStyle}"
+                                                        Margin="4"
+                                                        Command="{Binding DataContext.Commands.GoToPage, RelativeSource={RelativeSource AncestorType={x:Type Window}}}"
+                                                        CommandParameter="{Binding}"
+                                                        AutomationProperties.Name="{Binding Name, StringFormat=Go to page {0}}"
+                                                        ToolTip="{Binding Name}">
+                                                    <Grid Margin="9,8">
+                                                        <Grid.RowDefinitions>
+                                                            <RowDefinition Height="Auto" />
+                                                            <RowDefinition Height="*" />
+                                                            <RowDefinition Height="Auto" />
+                                                        </Grid.RowDefinitions>
+                                                        <DockPanel LastChildFill="False">
+                                                            <TextBlock Text="{Binding PageLabel}"
+                                                                       FontFamily="{StaticResource MonoFontFamily}"
+                                                                       FontSize="7.5"
+                                                                       FontWeight="Bold"
+                                                                       Foreground="{Binding AccentBrush}" />
+                                                            <Ellipse Width="5"
+                                                                     Height="5"
+                                                                     Margin="5,0,0,0"
+                                                                     Fill="{Binding AccentBrush}">
+                                                                <Ellipse.Style>
+                                                                    <Style TargetType="{x:Type Ellipse}">
+                                                                        <Setter Property="Opacity" Value="0.25" />
+                                                                        <Style.Triggers>
+                                                                            <DataTrigger Binding="{Binding IsActive}" Value="True">
+                                                                                <Setter Property="Opacity" Value="1" />
+                                                                            </DataTrigger>
+                                                                        </Style.Triggers>
+                                                                    </Style>
+                                                                </Ellipse.Style>
+                                                            </Ellipse>
+                                                        </DockPanel>
+                                                        <controls:PageLayoutPreview Grid.Row="1"
+                                                                                    Height="36"
+                                                                                    Margin="0,6,0,6"
+                                                                                    WindowCount="{Binding WindowCount}"
+                                                                                    Layout="{Binding DataContext.PageLayout, RelativeSource={RelativeSource AncestorType={x:Type Window}}}"
+                                                                                    AccentBrush="{Binding AccentBrush}"
+                                                                                    SlotBrush="{DynamicResource SurfaceMutedBrush}" />
+                                                        <StackPanel Grid.Row="2">
+                                                            <TextBlock Text="{Binding Name}"
+                                                                       FontSize="9.5"
+                                                                       FontWeight="SemiBold"
+                                                                       TextTrimming="CharacterEllipsis" />
+                                                            <TextBlock Text="{Binding WindowCountText}"
+                                                                       Margin="0,1,0,0"
+                                                                       FontSize="7.5"
+                                                                       Foreground="{DynamicResource TextTertiaryBrush}" />
+                                                        </StackPanel>
+                                                    </Grid>
+                                                </Button>
+                                            </DataTemplate>
+                                        </ItemsControl.ItemTemplate>
+                                    </ItemsControl>
+                                </ScrollViewer>
                                 <TextBlock Grid.Row="2"
                                            Margin="14,7,14,10"
-                                           Text="Drag to pan · Ctrl+wheel to zoom · double-click to fit"
+                                           Text="{DynamicResource PageMapHint}"
                                            FontSize="7.8"
                                            Foreground="{DynamicResource TextTertiaryBrush}"
                                            TextTrimming="CharacterEllipsis" />
@@ -1124,8 +1196,8 @@
                                 </Grid.RowDefinitions>
                                 <Grid Margin="14,12,14,8">
                                     <StackPanel>
-                                        <TextBlock Text="AI ACTIVITY" Style="{StaticResource EyebrowTextStyle}" />
-                                        <TextBlock Text="Local policy journal"
+                                        <TextBlock Text="{DynamicResource AiActivity}" Style="{StaticResource EyebrowTextStyle}" />
+                                        <TextBlock Text="{DynamicResource LocalPolicyJournal}"
                                                    Margin="0,2,0,0"
                                                    FontFamily="{StaticResource DisplayFontFamily}"
                                                    FontSize="13"
@@ -1136,7 +1208,7 @@
                                             Padding="6,1"
                                             Background="{DynamicResource SurfaceMutedBrush}"
                                             CornerRadius="5">
-                                        <TextBlock Text="ON DEVICE"
+                                        <TextBlock Text="{DynamicResource OnDevice}"
                                                    FontSize="7.5"
                                                    FontWeight="SemiBold"
                                                    Foreground="{DynamicResource TextSecondaryBrush}" />
@@ -1203,6 +1275,248 @@
                     </Grid>
                 </Grid>
 
+                <!-- ============================ SETTINGS ============================ -->
+                <Grid Grid.Row="1"
+                      Margin="18,16,18,10"
+                      Visibility="{Binding IsSettingsTab, Converter={StaticResource BooleanToVisibility}}">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="16" />
+                        <ColumnDefinition Width="320" />
+                    </Grid.ColumnDefinitions>
+
+                    <Border Grid.Column="0"
+                            Style="{StaticResource CardStyle}"
+                            Padding="24"
+                            CornerRadius="16">
+                        <ScrollViewer VerticalScrollBarVisibility="Auto"
+                                      HorizontalScrollBarVisibility="Disabled"
+                                      Focusable="False">
+                            <StackPanel>
+                                <TextBlock Text="{DynamicResource SettingsEyebrow}" Style="{StaticResource EyebrowTextStyle}" />
+                                <TextBlock Text="{DynamicResource SettingsTitle}"
+                                           Margin="0,4,0,0"
+                                           FontFamily="{StaticResource DisplayFontFamily}"
+                                           FontSize="26"
+                                           FontWeight="SemiBold" />
+                                <TextBlock Text="{DynamicResource SettingsSubtitle}"
+                                           Margin="0,4,0,0"
+                                           FontSize="10.5"
+                                           Foreground="{DynamicResource TextSecondaryBrush}" />
+
+                                <Border Margin="0,20,0,0"
+                                        Padding="16"
+                                        Background="{DynamicResource SurfaceSoftBrush}"
+                                        BorderBrush="{DynamicResource BorderBrush}"
+                                        BorderThickness="1"
+                                        CornerRadius="12">
+                                    <StackPanel>
+                                        <TextBlock Text="{DynamicResource Language}"
+                                                   FontSize="12"
+                                                   FontWeight="SemiBold" />
+                                        <StackPanel Orientation="Horizontal" Margin="0,10,0,0">
+                                            <RadioButton GroupName="LanguageChoice"
+                                                         Style="{StaticResource FilterChipStyle}"
+                                                         Content="{DynamicResource English}"
+                                                         IsChecked="{Binding IsEnglish, Mode=TwoWay}" />
+                                            <RadioButton GroupName="LanguageChoice"
+                                                         Margin="8,0,0,0"
+                                                         Style="{StaticResource FilterChipStyle}"
+                                                         Content="{DynamicResource Spanish}"
+                                                         IsChecked="{Binding IsSpanish, Mode=TwoWay}" />
+                                        </StackPanel>
+                                    </StackPanel>
+                                </Border>
+
+                                <Border Margin="0,12,0,0"
+                                        Padding="16"
+                                        Background="{DynamicResource SurfaceSoftBrush}"
+                                        BorderBrush="{DynamicResource BorderBrush}"
+                                        BorderThickness="1"
+                                        CornerRadius="12">
+                                    <StackPanel>
+                                        <TextBlock Text="{DynamicResource ScrollShortcuts}"
+                                                   FontSize="12"
+                                                   FontWeight="SemiBold" />
+                                        <TextBlock Text="{DynamicResource ShortcutsHint}"
+                                                   Margin="0,3,0,0"
+                                                   FontSize="9"
+                                                   Foreground="{DynamicResource TextTertiaryBrush}"
+                                                   TextWrapping="Wrap" />
+
+                                        <Grid Margin="0,14,0,0">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="*" />
+                                                <ColumnDefinition Width="Auto" />
+                                            </Grid.ColumnDefinitions>
+                                            <StackPanel>
+                                                <TextBlock Text="{DynamicResource ScrollUp}"
+                                                           FontSize="10.5"
+                                                           FontWeight="SemiBold" />
+                                                <Border Margin="0,5,0,0"
+                                                        Padding="8,4"
+                                                        HorizontalAlignment="Left"
+                                                        Background="{DynamicResource SurfaceBrush}"
+                                                        BorderBrush="{DynamicResource BorderBrush}"
+                                                        BorderThickness="1"
+                                                        CornerRadius="6">
+                                                    <TextBlock Text="{Binding ScrollUpHotkeyDisplay}"
+                                                               FontFamily="{StaticResource MonoFontFamily}"
+                                                               FontSize="9"
+                                                               Foreground="{DynamicResource AccentBrush}" />
+                                                </Border>
+                                            </StackPanel>
+                                            <Button Grid.Column="1"
+                                                    Height="30"
+                                                    Padding="12,0"
+                                                    VerticalAlignment="Center"
+                                                    Style="{StaticResource SecondaryButtonStyle}"
+                                                    Content="{Binding ScrollUpButtonText}"
+                                                    Command="{Binding Commands.CaptureScrollUp}" />
+                                        </Grid>
+
+                                        <Grid Margin="0,12,0,0">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="*" />
+                                                <ColumnDefinition Width="Auto" />
+                                            </Grid.ColumnDefinitions>
+                                            <StackPanel>
+                                                <TextBlock Text="{DynamicResource ScrollDown}"
+                                                           FontSize="10.5"
+                                                           FontWeight="SemiBold" />
+                                                <Border Margin="0,5,0,0"
+                                                        Padding="8,4"
+                                                        HorizontalAlignment="Left"
+                                                        Background="{DynamicResource SurfaceBrush}"
+                                                        BorderBrush="{DynamicResource BorderBrush}"
+                                                        BorderThickness="1"
+                                                        CornerRadius="6">
+                                                    <TextBlock Text="{Binding ScrollDownHotkeyDisplay}"
+                                                               FontFamily="{StaticResource MonoFontFamily}"
+                                                               FontSize="9"
+                                                               Foreground="{DynamicResource AccentBrush}" />
+                                                </Border>
+                                            </StackPanel>
+                                            <Button Grid.Column="1"
+                                                    Height="30"
+                                                    Padding="12,0"
+                                                    VerticalAlignment="Center"
+                                                    Style="{StaticResource SecondaryButtonStyle}"
+                                                    Content="{Binding ScrollDownButtonText}"
+                                                    Command="{Binding Commands.CaptureScrollDown}" />
+                                        </Grid>
+
+                                        <StackPanel Margin="0,12,0,0">
+                                            <TextBlock Text="{DynamicResource HudShortcut}"
+                                                       FontSize="10.5"
+                                                       FontWeight="SemiBold" />
+                                            <Border Margin="0,5,0,0"
+                                                    Padding="8,4"
+                                                    HorizontalAlignment="Left"
+                                                    Background="{DynamicResource SurfaceBrush}"
+                                                    BorderBrush="{DynamicResource BorderBrush}"
+                                                    BorderThickness="1"
+                                                    CornerRadius="6">
+                                                <TextBlock Text="{Binding HudShortcutLabel}"
+                                                           FontFamily="{StaticResource MonoFontFamily}"
+                                                           FontSize="9"
+                                                           Foreground="{DynamicResource AccentBrush}" />
+                                            </Border>
+                                        </StackPanel>
+
+                                        <TextBlock Text="{Binding SettingsStatusMessage}"
+                                                   Margin="0,12,0,0"
+                                                   FontSize="9"
+                                                   Foreground="{DynamicResource SuccessBrush}"
+                                                   TextWrapping="Wrap"
+                                                   Visibility="{Binding HasSettingsStatus, Converter={StaticResource BooleanToVisibility}}" />
+
+                                        <Button Margin="0,14,0,0"
+                                                HorizontalAlignment="Left"
+                                                Height="30"
+                                                Padding="12,0"
+                                                Style="{StaticResource SecondaryButtonStyle}"
+                                                Content="{DynamicResource ResetDefaults}"
+                                                Command="{Binding Commands.ResetSettings}" />
+                                    </StackPanel>
+                                </Border>
+
+                                <Border Margin="0,12,0,0"
+                                        Padding="16"
+                                        Background="{DynamicResource SurfaceSoftBrush}"
+                                        BorderBrush="{DynamicResource BorderBrush}"
+                                        BorderThickness="1"
+                                        CornerRadius="12">
+                                    <StackPanel>
+                                        <TextBlock Text="{DynamicResource PageLayout}"
+                                                   FontSize="12"
+                                                   FontWeight="SemiBold" />
+                                        <TextBlock Text="{DynamicResource LayoutHint}"
+                                                   Margin="0,3,0,0"
+                                                   FontSize="9"
+                                                   Foreground="{DynamicResource TextTertiaryBrush}" />
+                                        <StackPanel Orientation="Horizontal" Margin="0,10,0,0">
+                                            <RadioButton GroupName="PageLayoutChoice"
+                                                         Style="{StaticResource FilterChipStyle}"
+                                                         Content="{DynamicResource LayoutAuto}"
+                                                         IsChecked="{Binding IsLayoutAuto, Mode=TwoWay}" />
+                                            <RadioButton GroupName="PageLayoutChoice"
+                                                         Margin="6,0,0,0"
+                                                         Style="{StaticResource FilterChipStyle}"
+                                                         Content="{DynamicResource LayoutColumns}"
+                                                         IsChecked="{Binding IsLayoutColumns, Mode=TwoWay}" />
+                                            <RadioButton GroupName="PageLayoutChoice"
+                                                         Margin="6,0,0,0"
+                                                         Style="{StaticResource FilterChipStyle}"
+                                                         Content="{DynamicResource LayoutRows}"
+                                                         IsChecked="{Binding IsLayoutRows, Mode=TwoWay}" />
+                                            <RadioButton GroupName="PageLayoutChoice"
+                                                         Margin="6,0,0,0"
+                                                         Style="{StaticResource FilterChipStyle}"
+                                                         Content="{DynamicResource LayoutGrid}"
+                                                         IsChecked="{Binding IsLayoutGrid, Mode=TwoWay}" />
+                                        </StackPanel>
+                                    </StackPanel>
+                                </Border>
+                            </StackPanel>
+                        </ScrollViewer>
+                    </Border>
+
+                    <Border Grid.Column="2"
+                            Style="{StaticResource CardStyle}"
+                            Padding="20"
+                            CornerRadius="16">
+                        <StackPanel>
+                            <TextBlock Text="{DynamicResource LayoutPreview}"
+                                       FontFamily="{StaticResource DisplayFontFamily}"
+                                       FontSize="16"
+                                       FontWeight="SemiBold" />
+                            <TextBlock Text="{DynamicResource LayoutPreviewHint}"
+                                       Margin="0,4,0,0"
+                                       FontSize="9"
+                                       Foreground="{DynamicResource TextTertiaryBrush}"
+                                       TextWrapping="Wrap" />
+                            <Border Margin="0,18,0,0"
+                                    Height="190"
+                                    Padding="12"
+                                    Background="{DynamicResource SurfaceSoftBrush}"
+                                    BorderBrush="{DynamicResource BorderBrush}"
+                                    BorderThickness="1"
+                                    CornerRadius="12">
+                                <controls:PageLayoutPreview WindowCount="4"
+                                                            Layout="{Binding PageLayout}"
+                                                            AccentBrush="{DynamicResource AccentBrush}"
+                                                            SlotBrush="{DynamicResource SurfaceBrush}" />
+                            </Border>
+                            <TextBlock Margin="0,16,0,0"
+                                       Text="{DynamicResource HudShortcutFixed}"
+                                       FontFamily="{StaticResource MonoFontFamily}"
+                                       FontSize="9"
+                                       Foreground="{DynamicResource TextTertiaryBrush}" />
+                        </StackPanel>
+                    </Border>
+                </Grid>
+
                 <!-- ============================ FOOTER ============================ -->
                 <Border Grid.Row="2"
                         BorderBrush="{DynamicResource BorderBrush}"
@@ -1221,7 +1535,7 @@
                                     BorderBrush="{DynamicResource BorderBrush}"
                                     BorderThickness="1"
                                     CornerRadius="6">
-                                <TextBlock Text="Ctrl+E ▲ / Ctrl+F ▼"
+                                <TextBlock Text="{Binding ScrollShortcutHint}"
                                            FontFamily="{StaticResource MonoFontFamily}"
                                            FontSize="8"
                                            FontWeight="SemiBold"
@@ -1234,7 +1548,7 @@
                                     BorderBrush="{DynamicResource BorderBrush}"
                                     BorderThickness="1"
                                     CornerRadius="6">
-                                <TextBlock Text="Ctrl+E+F HUD"
+                                <TextBlock Text="{Binding HudShortcutBadge}"
                                            FontFamily="{StaticResource MonoFontFamily}"
                                            FontSize="8"
                                            FontWeight="SemiBold"
@@ -1263,11 +1577,14 @@
                                     Orientation="Horizontal"
                                     HorizontalAlignment="Center"
                                     VerticalAlignment="Center">
-                            <TextBlock Text="100% LOCAL"
+                            <TextBlock Text="{DynamicResource LocalOnly}"
                                        FontSize="7.5"
                                        FontWeight="SemiBold"
                                        Foreground="{DynamicResource TextTertiaryBrush}" />
-                            <TextBlock Text="  ·  NO NETWORK REQUESTS"
+                            <TextBlock Text="  ·  "
+                                       FontSize="7.5"
+                                       Foreground="{DynamicResource TextTertiaryBrush}" />
+                            <TextBlock Text="{DynamicResource NoNetwork}"
                                        FontSize="7.5"
                                        Foreground="{DynamicResource TextTertiaryBrush}" />
                             <TextBlock Text="  ·  "
@@ -1280,7 +1597,7 @@
                             <TextBlock Text="  ·  "
                                        FontSize="7.5"
                                        Foreground="{DynamicResource TextTertiaryBrush}" />
-                            <TextBlock Text="{Binding LastTelemetryLabel, StringFormat=TELEMETRY {0}}"
+                            <TextBlock Text="{Binding TelemetryLabel}"
                                        FontFamily="{StaticResource MonoFontFamily}"
                                        FontSize="7.5"
                                        Foreground="{DynamicResource TextTertiaryBrush}" />

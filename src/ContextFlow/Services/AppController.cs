@@ -20,6 +20,7 @@ public sealed class AppController
     private readonly AppLog _log;
     private readonly SemaphoreSlim _hudTransition = new(1, 1);
     private readonly ThemeService _theme = new();
+    private readonly LocalizationService _localization = new();
 
     private SettingsService? _settings;
     private SessionGuard? _sessionGuard;
@@ -62,6 +63,7 @@ public sealed class AppController
         _started = true;
         _settings = new SettingsService(_paths, _log);
         var settings = _settings.Load();
+        _localization.Apply(settings.Language);
 
         _sessionGuard = new SessionGuard(_paths, _log);
         _sessionGuard.RecoverOrphanedState();
@@ -92,6 +94,7 @@ public sealed class AppController
             _navigator,
             _optimizer,
             _telemetry,
+            _localization,
             _log);
 
         _theme.Apply(settings.IsDarkTheme);
@@ -110,6 +113,7 @@ public sealed class AppController
         CreateWindows(settings);
         StartHotkey();
         CreateTray();
+        _localization.LanguageChanged += (_, _) => _tray?.UpdateLanguage();
 
         _log.Info(
             $"ContextFlow ready. Capsules={_settings.Current.Capsules.Count}, " +
@@ -135,6 +139,14 @@ public sealed class AppController
         _viewModel.CollapseRequested += (_, _) => _ = HideHudAsync();
         _viewModel.ExitRequested += (_, _) => _ = ShutdownAsync();
         _viewModel.WindowNavigationRequested += direction => _ = NavigateWindowAsync(direction);
+        _viewModel.HotkeysChanged += (_, _) => UpdateHotkeyGestures();
+        _viewModel.HotkeyCaptureStateChanged += capturing =>
+        {
+            if (_hotkey is not null)
+            {
+                _hotkey.IsSuspended = capturing;
+            }
+        };
         _viewModel.HudFocusRequested += (_, _) =>
         {
             if (_hudVisible && _hud is not null)
@@ -219,12 +231,25 @@ public sealed class AppController
         _hotkey.Pressed += (_, _) => _ = ToggleHudAsync();
         _hotkey.PreviousRequested += (_, _) => _ = NavigateWindowAsync(-1);
         _hotkey.NextRequested += (_, _) => _ = NavigateWindowAsync(1);
+        UpdateHotkeyGestures();
         var running = _hotkey.Start();
         _viewModel?.SetHotkeyStatus(running, _hotkey.LastError);
         if (!running)
         {
             _log.Warn($"Global hotkey unavailable: {_hotkey.LastError}");
         }
+    }
+
+    private void UpdateHotkeyGestures()
+    {
+        if (_hotkey is null || _settings is null)
+        {
+            return;
+        }
+
+        _hotkey.UpdateGestures(
+            HotkeyGesture.Parse(_settings.Current.ScrollUpHotkey, HotkeyGesture.DefaultScrollUp),
+            HotkeyGesture.Parse(_settings.Current.ScrollDownHotkey, HotkeyGesture.DefaultScrollDown));
     }
 
     private void CreateTray()
@@ -377,6 +402,7 @@ public sealed class AppController
                 return;
             }
 
+            _viewModel?.CancelHotkeyCapture();
             SaveHudPlacement();
             await _hud.PlayHideAnimationAsync().ConfigureAwait(true);
             _hud.Hide();

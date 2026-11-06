@@ -11,6 +11,15 @@ public sealed class AppSettings
     public bool IsDarkTheme { get; set; }
     public bool AutoOptimize { get; set; } = true;
 
+    /// <summary>Split-screen layout used when a page is activated.</summary>
+    public PageLayout PageLayout { get; set; } = PageLayout.Auto;
+
+    /// <summary>UI language: "en" or "es".</summary>
+    public string Language { get; set; } = "en";
+
+    public string ScrollUpHotkey { get; set; } = "Ctrl+E";
+    public string ScrollDownHotkey { get; set; } = "Ctrl+F";
+
     /// <summary>
     /// Opt-in DWM cloaking of windows that belong to inactive capsules.
     /// Disabled by default because it changes the visibility of other apps.
@@ -57,6 +66,10 @@ public sealed class AppSettings
         HudTop = FiniteOrNull(HudTop);
         HudWidth = FiniteOrNull(HudWidth);
         HudHeight = FiniteOrNull(HudHeight);
+
+        Language = string.Equals(Language, "es", StringComparison.OrdinalIgnoreCase) ? "es" : "en";
+        ScrollUpHotkey = HotkeyGesture.Parse(ScrollUpHotkey, HotkeyGesture.DefaultScrollUp).Display;
+        ScrollDownHotkey = HotkeyGesture.Parse(ScrollDownHotkey, HotkeyGesture.DefaultScrollDown).Display;
 
         foreach (var capsule in Capsules)
         {

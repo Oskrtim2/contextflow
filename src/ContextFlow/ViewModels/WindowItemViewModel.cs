@@ -1,6 +1,7 @@
 using System.Windows.Media;
 using ContextFlow.Infrastructure;
 using ContextFlow.Models;
+using ContextFlow.Services;
 
 namespace ContextFlow.ViewModels;
 
@@ -164,13 +165,16 @@ public sealed class WindowItemViewModel : ObservableObject
 
     public ScreenRect Bounds => _bounds;
 
-    public string StatusLabel => IsForeground
-        ? "FOCUSED"
-        : IsMinimized
-            ? "MINIMIZED"
-            : IsCloaked
-                ? "CLOAKED"
-                : "ON SCREEN";
+    public string StatusLabel => LocalizationService.Get(
+        IsForeground
+            ? "StatusFocused"
+            : IsMinimized
+                ? "StatusMinimized"
+                : IsCloaked
+                    ? "StatusCloaked"
+                    : "StatusOnScreen");
+
+    public void RefreshLocalization() => OnPropertyChanged(nameof(StatusLabel));
 
     public static WindowItemViewModel Create(ManagedWindow window) => new(window);
 

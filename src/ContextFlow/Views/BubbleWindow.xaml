@@ -34,12 +34,12 @@
                                FontFamily="{StaticResource DisplayFontFamily}"
                                FontSize="12"
                                FontWeight="SemiBold" />
-                    <TextBlock Text="Ctrl + E + F"
+                    <TextBlock Text="{Binding HudShortcutLabel}"
                                Margin="0,3,0,0"
                                FontFamily="{StaticResource MonoFontFamily}"
                                FontSize="10"
                                Foreground="{DynamicResource AccentBrush}" />
-                    <TextBlock Text="Click to open the contextual workspace"
+                    <TextBlock Text="{DynamicResource BubbleHint}"
                                Margin="0,3,0,0"
                                FontSize="9.5"
                                Foreground="{DynamicResource TextSecondaryBrush}" />
@@ -158,7 +158,7 @@
                 BorderBrush="{DynamicResource BorderBrush}"
                 BorderThickness="1"
                 CornerRadius="9"
-                ToolTip="Managed windows">
+                ToolTip="{DynamicResource ManagedWindows}">
             <TextBlock Text="{Binding BubbleCountText}"
                        FontFamily="{StaticResource MonoFontFamily}"
                        FontSize="8.5"

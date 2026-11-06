@@ -8,6 +8,7 @@
             <ResourceDictionary.MergedDictionaries>
                 <ResourceDictionary Source="Themes/Light.xaml" />
                 <ResourceDictionary Source="Themes/Styles.xaml" />
+                <ResourceDictionary Source="Themes/Strings.en.xaml" />
             </ResourceDictionary.MergedDictionaries>
 
             <infra:BooleanToVisibilityConverter x:Key="BooleanToVisibility" />

@@ -577,6 +577,169 @@ public sealed class WindowManager : IAsyncDisposable
     }
 
     /// <summary>
+    /// Tiles every window assigned to a page (capsule) inside the target
+    /// monitor work area. This is the split-screen simulation: the page owns a
+    /// single physical screen and divides it into Auto/Columns/Rows/Grid slots.
+    /// </summary>
+    public CapsuleMoveResult ArrangeCapsuleWindows(
+        string capsuleId,
+        DisplayInfo targetDisplay,
+        PageLayout layout,
+        bool focusFirst)
+    {
+        List<IntPtr> handles;
+        lock (_gate)
+        {
+            handles = _tracked.Values
+                .Where(t => string.Equals(t.Window.CapsuleId, capsuleId, StringComparison.Ordinal))
+                .OrderBy(t => t.Window.FirstSeenUtc)
+                .ThenBy(t => t.Window.Handle.ToInt64())
+                .Select(t => t.Window.Handle)
+                .ToList();
+        }
+
+        if (handles.Count == 0)
+        {
+            return new CapsuleMoveResult(0, 0);
+        }
+
+        var slots = BuildPageSlots(handles.Count, layout, targetDisplay.WorkArea);
+        var moved = 0;
+        var failed = 0;
+
+        for (var i = 0; i < handles.Count; i++)
+        {
+            var handle = handles[i];
+
+            // A maximized or minimized window cannot be positioned reliably
+            // until it is restored to its normal placement. SetWindowPlacement
+            // is synchronous; ShowWindowAsync can race with SetWindowPos and
+            // leave the window maximized on top of the tiled layout.
+            if (NativeMethods.IsZoomed(handle) || NativeMethods.IsIconic(handle))
+            {
+                var slot = slots[i];
+                var placement = new NativeMethods.WINDOWPLACEMENT
+                {
+                    length = (uint)System.Runtime.InteropServices.Marshal.SizeOf<NativeMethods.WINDOWPLACEMENT>(),
+                    showCmd = NativeMethods.SW_SHOWNORMAL,
+                    rcNormalPosition = new NativeMethods.RECT
+                    {
+                        Left = slot.X,
+                        Top = slot.Y,
+                        Right = slot.Right,
+                        Bottom = slot.Bottom
+                    }
+                };
+
+                if (!NativeMethods.SetWindowPlacement(handle, ref placement))
+                {
+                    NativeMethods.ShowWindow(handle, NativeMethods.SW_RESTORE);
+                }
+            }
+
+            if (SetWindowBounds(handle, slots[i]))
+            {
+                moved++;
+            }
+            else
+            {
+                failed++;
+            }
+        }
+
+        if (handles.Count == 1 && layout == PageLayout.Auto)
+        {
+            NativeMethods.ShowWindowAsync(handles[0], NativeMethods.SW_MAXIMIZE);
+        }
+
+        if (focusFirst && moved > 0)
+        {
+            FocusWindow(handles[0]);
+        }
+
+        _log.Info(
+            $"Page '{capsuleId}' arranged {moved} window(s) on {targetDisplay.Label} " +
+            $"using {layout} layout; {failed} failed.");
+
+        return new CapsuleMoveResult(moved, failed);
+    }
+
+    private static IReadOnlyList<ScreenRect> BuildPageSlots(
+        int count,
+        PageLayout layout,
+        ScreenRect work)
+    {
+        const int gap = 8;
+        var slots = new List<ScreenRect>(count);
+        if (count <= 0)
+        {
+            return slots;
+        }
+
+        if (layout == PageLayout.Auto && count == 1)
+        {
+            slots.Add(work);
+            return slots;
+        }
+
+        if (layout == PageLayout.Auto && count == 2)
+        {
+            var half = (work.Width - gap) / 2;
+            slots.Add(new ScreenRect(work.X, work.Y, half, work.Height));
+            slots.Add(new ScreenRect(work.X + half + gap, work.Y, work.Width - half - gap, work.Height));
+            return slots;
+        }
+
+        if (layout == PageLayout.Auto && count == 3)
+        {
+            // Classic focus layout: one large pane on the left and two stacked
+            // panes on the right.
+            var left = (work.Width - gap) / 2;
+            var right = work.Width - left - gap;
+            var top = (work.Height - gap) / 2;
+            var rightX = work.X + left + gap;
+            slots.Add(new ScreenRect(work.X, work.Y, left, work.Height));
+            slots.Add(new ScreenRect(rightX, work.Y, right, top));
+            slots.Add(new ScreenRect(rightX, work.Y + top + gap, right, work.Height - top - gap));
+            return slots;
+        }
+
+        int columns;
+        int rows;
+        if (layout == PageLayout.Columns)
+        {
+            columns = count;
+            rows = 1;
+        }
+        else if (layout == PageLayout.Rows)
+        {
+            columns = 1;
+            rows = count;
+        }
+        else
+        {
+            columns = Math.Max(1, (int)Math.Ceiling(Math.Sqrt(count)));
+            rows = Math.Max(1, (int)Math.Ceiling(count / (double)columns));
+        }
+
+        var cellWidth = Math.Max(1, (work.Width - gap * (columns - 1)) / columns);
+        var cellHeight = Math.Max(1, (work.Height - gap * (rows - 1)) / rows);
+
+        for (var i = 0; i < count; i++)
+        {
+            var row = i / columns;
+            var column = i % columns;
+            slots.Add(new ScreenRect(
+                work.X + column * (cellWidth + gap),
+                work.Y + row * (cellHeight + gap),
+                cellWidth,
+                cellHeight));
+        }
+
+        return slots;
+    }
+
+    /// <summary>
     /// Routes every window assigned to a capsule to the given display. A single
     /// DeferWindowPos batch is used where possible, preserving relative layout.
     /// </summary>

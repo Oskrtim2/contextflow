@@ -1,6 +1,7 @@
 using System.Windows.Media;
 using ContextFlow.Infrastructure;
 using ContextFlow.Models;
+using ContextFlow.Services;
 
 namespace ContextFlow.ViewModels;
 
@@ -10,10 +11,11 @@ public sealed class CapsuleItemViewModel : ObservableObject
     private bool _isActive;
     private string _targetDisplayLabel;
 
-    public CapsuleItemViewModel(CapsuleDefinition model, string targetDisplayLabel)
+    public CapsuleItemViewModel(CapsuleDefinition model, string targetDisplayLabel, int pageNumber = 1)
     {
         Model = model;
         _targetDisplayLabel = targetDisplayLabel;
+        PageNumber = pageNumber;
         AccentBrush = ColorUtil.BrushFromHex(model.Accent);
         AccentSoftBrush = ColorUtil.WithAlpha(model.Accent, 42);
     }
@@ -22,10 +24,14 @@ public sealed class CapsuleItemViewModel : ObservableObject
     public string Id => Model.Id;
     public string Name => Model.Name;
     public string Accent => Model.Accent;
+    public int PageNumber { get; }
+    public string PageLabel => LocalizationService.Format("PageLabelFormat", PageNumber);
     public Brush AccentBrush { get; }
     public Brush AccentSoftBrush { get; }
     public string CanvasRange => $"{Model.CanvasX:0} : {Model.CanvasY:0}";
-    public string WindowCountText => _windowCount == 1 ? "1 window" : $"{_windowCount} windows";
+    public string WindowCountText => _windowCount == 1
+        ? LocalizationService.Get("WindowCountOne")
+        : LocalizationService.Format("WindowCountFormat", _windowCount);
 
     public int WindowCount
     {
@@ -52,4 +58,10 @@ public sealed class CapsuleItemViewModel : ObservableObject
     }
 
     public void SetTargetDisplayLabel(string label) => TargetDisplayLabel = label;
+
+    public void RefreshLocalization()
+    {
+        OnPropertyChanged(nameof(PageLabel));
+        OnPropertyChanged(nameof(WindowCountText));
+    }
 }

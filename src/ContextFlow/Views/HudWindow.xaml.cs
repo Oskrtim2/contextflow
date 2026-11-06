@@ -108,6 +108,33 @@ public partial class HudWindow : Window
 
     private void MaximizeButton_OnClick(object sender, RoutedEventArgs e) => ToggleMaximize();
 
+    private void Window_OnPreviewKeyDown(object sender, KeyEventArgs e)
+    {
+        if (DataContext is not MainViewModel viewModel || !viewModel.IsCapturingHotkey)
+        {
+            return;
+        }
+
+        if (e.Key == Key.Escape)
+        {
+            viewModel.CancelHotkeyCapture();
+            e.Handled = true;
+            return;
+        }
+
+        var key = e.Key == Key.System ? e.SystemKey : e.Key;
+        if (key is Key.LeftCtrl or Key.RightCtrl or Key.LeftAlt or Key.RightAlt
+            or Key.LeftShift or Key.RightShift or Key.LWin or Key.RWin)
+        {
+            e.Handled = true;
+            return;
+        }
+
+        var windows = Keyboard.IsKeyDown(Key.LWin) || Keyboard.IsKeyDown(Key.RWin);
+        viewModel.TryCaptureHotkey(key, Keyboard.Modifiers, windows);
+        e.Handled = true;
+    }
+
     private void ToggleMaximize()
     {
         WindowState = WindowState == WindowState.Maximized
@@ -124,9 +151,9 @@ public partial class HudWindow : Window
 
         var maximized = WindowState == WindowState.Maximized;
         MaximizeButton.Content = maximized ? "❐" : "□";
-        MaximizeButton.ToolTip = maximized
-            ? "Restore HUD (double-click header)"
-            : "Maximize HUD (double-click header)";
+        MaximizeButton.SetResourceReference(
+            FrameworkElement.ToolTipProperty,
+            maximized ? "TooltipRestore" : "TooltipMaximize");
         Shell.CornerRadius = maximized ? new CornerRadius(0) : new CornerRadius(20);
     }
 
@@ -172,7 +199,7 @@ public partial class HudWindow : Window
 
         menu.Items.Add(new MenuItem
         {
-            Header = "MOVE WINDOW TO",
+            Header = LocalizationService.Get("MoveWindowTo"),
             IsEnabled = false,
             Style = (Style)FindResource("CapsuleMenuItemStyle")
         });
