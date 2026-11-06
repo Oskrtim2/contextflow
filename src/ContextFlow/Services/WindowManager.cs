@@ -720,6 +720,37 @@ public sealed class WindowManager : IAsyncDisposable
         }
     }
 
+    /// <summary>
+    /// Focuses a window and makes it fill its monitor. Used by the infinite
+    /// window scroll so each selected window behaves like a Pop!_OS workspace.
+    /// </summary>
+    public bool FocusAndMaximizeWindow(IntPtr hwnd)
+    {
+        bool canMaximize;
+        lock (_gate)
+        {
+            if (!_tracked.ContainsKey(hwnd) || !NativeMethods.IsWindow(hwnd))
+            {
+                return false;
+            }
+
+            var style = NativeMethods.GetWindowLongPtr(hwnd, NativeMethods.GWL_STYLE).ToInt64();
+            canMaximize = (style & NativeMethods.WS_MAXIMIZEBOX) != 0;
+        }
+
+        if (NativeMethods.IsIconic(hwnd))
+        {
+            NativeMethods.ShowWindowAsync(hwnd, NativeMethods.SW_RESTORE);
+        }
+
+        if (canMaximize && !NativeMethods.IsZoomed(hwnd))
+        {
+            NativeMethods.ShowWindowAsync(hwnd, NativeMethods.SW_MAXIMIZE);
+        }
+
+        return FocusWindow(hwnd);
+    }
+
     public bool FocusWindow(IntPtr hwnd)
     {
         lock (_gate)

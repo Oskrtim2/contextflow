@@ -13,6 +13,8 @@ internal static class NativeMethods
     public const long WS_CHILD = 0x40000000L;
     public const long WS_MINIMIZE = 0x20000000L;
     public const long WS_MAXIMIZE = 0x01000000L;
+    public const long WS_MAXIMIZEBOX = 0x00010000L;
+    public const long WS_THICKFRAME = 0x00040000L;
     public const long WS_EX_TOOLWINDOW = 0x00000080L;
     public const long WS_EX_APPWINDOW = 0x00040000L;
     public const long WS_EX_NOACTIVATE = 0x08000000L;

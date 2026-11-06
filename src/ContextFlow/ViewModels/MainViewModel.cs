@@ -19,6 +19,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
     private readonly SettingsService _settingsService;
     private readonly WindowManager _windowManager;
     private readonly DisplayService _displayService;
+    private readonly WindowNavigator _navigator;
     private readonly HardwareAIOptimizer _optimizer;
     private readonly TelemetryService _telemetry;
     private readonly AppLog _log;
@@ -52,13 +53,19 @@ public sealed class MainViewModel : ObservableObject, IDisposable
     private int _activeCapsuleWindowCount;
     private int _visibleWindowCount;
     private string _hotkeyStatusLabel = "INITIALIZING";
-    private string _hotkeyDetail = "Ctrl + E + F";
+    private string _hotkeyDetail = "Ctrl+E / Ctrl+F scroll · Ctrl+E+F HUD";
     private bool _hotkeyReady;
+    private WindowNavigationResult? _currentNavigation;
+    private string _currentWindowTitle = "No window selected";
+    private string _currentWindowProcess = "Ctrl+E / Ctrl+F scrolls windows";
+    private string _windowScrollPositionText = "—";
+    private bool _hasScrollWindow;
 
     public MainViewModel(
         SettingsService settingsService,
         WindowManager windowManager,
         DisplayService displayService,
+        WindowNavigator navigator,
         HardwareAIOptimizer optimizer,
         TelemetryService telemetry,
         AppLog log)
@@ -66,6 +73,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         _settingsService = settingsService;
         _windowManager = windowManager;
         _displayService = displayService;
+        _navigator = navigator;
         _optimizer = optimizer;
         _telemetry = telemetry;
         _log = log;
@@ -102,6 +110,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         _windowManager.WindowsChanged += OnWindowsChanged;
         _telemetry.SampleReceived += OnTelemetrySample;
         _optimizer.ActivityReported += OnOptimizerActivity;
+        _navigator.Navigated += OnWindowNavigated;
 
         _windowManager.ConfigureCapsules(
             _settingsService.Current.Capsules,
@@ -120,6 +129,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         }
 
         ApplyWindowSnapshot(_windowManager.Snapshot);
+        ApplyNavigation(_navigator.ResolveCurrent());
     }
 
     public ObservableCollection<CapsuleItemViewModel> Capsules { get; }
@@ -132,6 +142,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
     public event Action<bool>? ThemeChangeRequested;
     public event EventHandler? CollapseRequested;
     public event EventHandler? ExitRequested;
+    public event Action<int>? WindowNavigationRequested;
 
     /// <summary>
     /// Raised after activating a capsule restores minimized windows so the
@@ -270,6 +281,30 @@ public sealed class MainViewModel : ObservableObject, IDisposable
     {
         get => _hotkeyReady;
         private set => SetProperty(ref _hotkeyReady, value);
+    }
+
+    public string CurrentWindowTitle
+    {
+        get => _currentWindowTitle;
+        private set => SetProperty(ref _currentWindowTitle, value);
+    }
+
+    public string CurrentWindowProcess
+    {
+        get => _currentWindowProcess;
+        private set => SetProperty(ref _currentWindowProcess, value);
+    }
+
+    public string WindowScrollPositionText
+    {
+        get => _windowScrollPositionText;
+        private set => SetProperty(ref _windowScrollPositionText, value);
+    }
+
+    public bool HasScrollWindow
+    {
+        get => _hasScrollWindow;
+        private set => SetProperty(ref _hasScrollWindow, value);
     }
 
     public string HotkeyStatusLabel
@@ -502,9 +537,9 @@ public sealed class MainViewModel : ObservableObject, IDisposable
     public void SetHotkeyStatus(bool ready, string? error = null)
     {
         HotkeyReady = ready;
-        HotkeyStatusLabel = ready ? "GLOBAL HOTKEY READY" : "HOTKEY UNAVAILABLE";
+        HotkeyStatusLabel = ready ? "GLOBAL HOTKEYS READY" : "HOTKEYS UNAVAILABLE";
         HotkeyDetail = ready
-            ? "Ctrl + E + F"
+            ? "Ctrl+E / Ctrl+F scroll · Ctrl+E+F HUD"
             : error ?? "Another application may be capturing keyboard input.";
         OnPropertyChanged(nameof(HotkeyReady));
     }
@@ -558,8 +593,40 @@ public sealed class MainViewModel : ObservableObject, IDisposable
             ActivateCapsule(capsule);
         }
 
-        _windowManager.FocusWindow(window.Handle);
+        var navigation = _navigator.FocusWindow(window.Handle);
+        if (navigation is not null)
+        {
+            ApplyNavigation(navigation);
+        }
+
         CollapseRequested?.Invoke(this, EventArgs.Empty);
+    }
+
+    public void RequestWindowNavigation(int direction) =>
+        WindowNavigationRequested?.Invoke(direction);
+
+    public void ApplyNavigation(WindowNavigationResult? result)
+    {
+        _currentNavigation = result;
+        if (result is null)
+        {
+            CurrentWindowTitle = "No window selected";
+            CurrentWindowProcess = "Ctrl+E / Ctrl+F scrolls windows";
+            WindowScrollPositionText = "—";
+            HasScrollWindow = false;
+        }
+        else
+        {
+            CurrentWindowTitle = result.Title;
+            CurrentWindowProcess = result.ProcessName;
+            WindowScrollPositionText = $"{result.Index + 1} / {result.Count}";
+            HasScrollWindow = true;
+        }
+
+        foreach (var window in Windows)
+        {
+            window.IsScrollCurrent = result is not null && window.Handle == result.Handle;
+        }
     }
 
     public void MoveWindowToCapsule(WindowItemViewModel window, CapsuleItemViewModel capsule)
@@ -668,11 +735,13 @@ public sealed class MainViewModel : ObservableObject, IDisposable
             if (_windowLookup.TryGetValue(managed.Handle, out var existing))
             {
                 existing.Update(managed, capsule, display);
+                existing.IsScrollCurrent = _currentNavigation?.Handle == managed.Handle;
             }
             else
             {
                 var item = WindowItemViewModel.Create(managed);
                 item.Update(managed, capsule, display);
+                item.IsScrollCurrent = _currentNavigation?.Handle == managed.Handle;
                 _windowLookup[managed.Handle] = item;
                 Windows.Add(item);
             }
@@ -690,7 +759,11 @@ public sealed class MainViewModel : ObservableObject, IDisposable
             : snapshot.Count(w => string.Equals(w.CapsuleId, ActiveCapsule.Id, StringComparison.Ordinal));
 
         RefreshFilter();
+        ApplyNavigation(_navigator.ResolveCurrent());
     }
+
+    private void OnWindowNavigated(object? sender, WindowNavigationResult e) =>
+        Dispatch(() => ApplyNavigation(e));
 
     private void OnTelemetrySample(TelemetrySnapshot sample)
     {
@@ -842,6 +915,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         _windowManager.WindowsChanged -= OnWindowsChanged;
         _telemetry.SampleReceived -= OnTelemetrySample;
         _optimizer.ActivityReported -= OnOptimizerActivity;
+        _navigator.Navigated -= OnWindowNavigated;
     }
 
     public sealed class MainCommands
@@ -883,6 +957,8 @@ public sealed class MainViewModel : ObservableObject, IDisposable
             ShowAllWindows = new RelayCommand(() => vm.ShowAllWindows = true);
             ShowCapsuleWindows = new RelayCommand(() => vm.ShowAllWindows = false);
             ClearSearch = new RelayCommand(() => vm.SearchText = string.Empty);
+            NavigatePreviousWindow = new RelayCommand(() => vm.RequestWindowNavigation(-1));
+            NavigateNextWindow = new RelayCommand(() => vm.RequestWindowNavigation(1));
         }
 
         public RelayCommand ActivateCapsule { get; }
@@ -895,5 +971,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         public RelayCommand ShowAllWindows { get; }
         public RelayCommand ShowCapsuleWindows { get; }
         public RelayCommand ClearSearch { get; }
+        public RelayCommand NavigatePreviousWindow { get; }
+        public RelayCommand NavigateNextWindow { get; }
     }
 }

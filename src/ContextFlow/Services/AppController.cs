@@ -26,6 +26,7 @@ public sealed class AppController
     private DisplayService? _displays;
     private IconService? _icons;
     private WindowManager? _windowManager;
+    private WindowNavigator? _navigator;
     private TelemetryService? _telemetry;
     private LocalAiPolicyEngine? _policy;
     private HardwareAIOptimizer? _optimizer;
@@ -71,6 +72,7 @@ public sealed class AppController
 
         _icons = new IconService();
         _windowManager = new WindowManager(_displays, _icons, _sessionGuard, _log);
+        _navigator = new WindowNavigator(_windowManager, _settings, _log);
         _telemetry = new TelemetryService(_log);
         _policy = new LocalAiPolicyEngine(_log);
         _policy.WarmUp();
@@ -87,6 +89,7 @@ public sealed class AppController
             _settings,
             _windowManager,
             _displays,
+            _navigator,
             _optimizer,
             _telemetry,
             _log);
@@ -131,6 +134,7 @@ public sealed class AppController
         _viewModel.ThemeChangeRequested += OnThemeChangeRequested;
         _viewModel.CollapseRequested += (_, _) => _ = HideHudAsync();
         _viewModel.ExitRequested += (_, _) => _ = ShutdownAsync();
+        _viewModel.WindowNavigationRequested += direction => _ = NavigateWindowAsync(direction);
         _viewModel.HudFocusRequested += (_, _) =>
         {
             if (_hudVisible && _hud is not null)
@@ -213,6 +217,8 @@ public sealed class AppController
     {
         _hotkey = new GlobalHotkeyHook(_log);
         _hotkey.Pressed += (_, _) => _ = ToggleHudAsync();
+        _hotkey.PreviousRequested += (_, _) => _ = NavigateWindowAsync(-1);
+        _hotkey.NextRequested += (_, _) => _ = NavigateWindowAsync(1);
         var running = _hotkey.Start();
         _viewModel?.SetHotkeyStatus(running, _hotkey.LastError);
         if (!running)
@@ -278,6 +284,34 @@ public sealed class AppController
         else
         {
             await ShowHudAsync().ConfigureAwait(true);
+        }
+    }
+
+    private async Task NavigateWindowAsync(int direction)
+    {
+        if (_shutdownStarted)
+        {
+            return;
+        }
+
+        try
+        {
+            // The HUD is topmost; collapse it first so the selected window is
+            // actually visible when it is maximized and focused.
+            if (_hudVisible)
+            {
+                await HideHudAsync().ConfigureAwait(true);
+            }
+
+            var result = _navigator?.Navigate(direction);
+            if (result is null)
+            {
+                _log.Info("Window scroll ignored: no manageable windows.");
+            }
+        }
+        catch (Exception ex)
+        {
+            _log.Error("Could not navigate the managed window ring.", ex);
         }
     }
 
@@ -609,6 +643,7 @@ public sealed class AppController
                 await _telemetry.DisposeAsync().ConfigureAwait(true);
             }
 
+            _navigator?.Dispose();
             _viewModel?.Dispose();
             _policy?.Dispose();
         }

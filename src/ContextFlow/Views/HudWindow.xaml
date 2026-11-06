@@ -710,9 +710,45 @@
                                                            Foreground="{DynamicResource TextSecondaryBrush}" />
                                             </Border>
                                         </StackPanel>
+                                        <StackPanel Orientation="Horizontal" Margin="0,4,0,0">
+                                            <TextBlock Text="{Binding CurrentWindowTitle}"
+                                                       MaxWidth="280"
+                                                       FontSize="8.5"
+                                                       FontWeight="SemiBold"
+                                                       Foreground="{DynamicResource TextSecondaryBrush}"
+                                                       TextTrimming="CharacterEllipsis"
+                                                       ToolTip="{Binding CurrentWindowTitle}" />
+                                            <TextBlock Text="{Binding WindowScrollPositionText, StringFormat=  ·  {0}}"
+                                                       FontFamily="{StaticResource MonoFontFamily}"
+                                                       FontSize="8"
+                                                       Foreground="{DynamicResource TextTertiaryBrush}" />
+                                            <TextBlock Text="  ·  Ctrl+E ▲  Ctrl+F ▼"
+                                                       FontSize="7.5"
+                                                       Foreground="{DynamicResource TextTertiaryBrush}" />
+                                        </StackPanel>
                                     </StackPanel>
 
                                     <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
+                                        <Button Width="28"
+                                                Height="28"
+                                                Margin="0,0,4,0"
+                                                Style="{StaticResource IconButtonStyle}"
+                                                Content="▲"
+                                                FontFamily="Segoe UI Symbol"
+                                                FontSize="9"
+                                                AutomationProperties.Name="Previous managed window"
+                                                Command="{Binding Commands.NavigatePreviousWindow}"
+                                                ToolTip="Previous window (Ctrl+E)" />
+                                        <Button Width="28"
+                                                Height="28"
+                                                Margin="0,0,8,0"
+                                                Style="{StaticResource IconButtonStyle}"
+                                                Content="▼"
+                                                FontFamily="Segoe UI Symbol"
+                                                FontSize="9"
+                                                AutomationProperties.Name="Next managed window"
+                                                Command="{Binding Commands.NavigateNextWindow}"
+                                                ToolTip="Next window (Ctrl+F)" />
                                         <Border Width="158"
                                                 Height="28"
                                                 Margin="0,0,8,0"
@@ -821,8 +857,19 @@
                                         <DataTemplate>
                                             <Border Height="54"
                                                     Padding="16,0"
-                                                    BorderBrush="{DynamicResource BorderBrush}"
                                                     BorderThickness="0,0,0,1">
+                                                <Border.Style>
+                                                    <Style TargetType="{x:Type Border}">
+                                                        <Setter Property="Background" Value="Transparent" />
+                                                        <Setter Property="BorderBrush" Value="{DynamicResource BorderBrush}" />
+                                                        <Style.Triggers>
+                                                            <DataTrigger Binding="{Binding IsScrollCurrent}" Value="True">
+                                                                <Setter Property="Background" Value="{DynamicResource AccentSoftBrush}" />
+                                                                <Setter Property="BorderBrush" Value="{DynamicResource AccentBrush}" />
+                                                            </DataTrigger>
+                                                        </Style.Triggers>
+                                                    </Style>
+                                                </Border.Style>
                                                 <Grid>
                                                     <Grid.ColumnDefinitions>
                                                         <ColumnDefinition Width="26" />
@@ -1171,9 +1218,22 @@
                                     BorderBrush="{DynamicResource BorderBrush}"
                                     BorderThickness="1"
                                     CornerRadius="6">
-                                <TextBlock Text="Ctrl + E + F"
+                                <TextBlock Text="Ctrl+E ▲ / Ctrl+F ▼"
                                            FontFamily="{StaticResource MonoFontFamily}"
-                                           FontSize="8.5"
+                                           FontSize="8"
+                                           FontWeight="SemiBold"
+                                           Foreground="{DynamicResource TextSecondaryBrush}" />
+                            </Border>
+                            <Border Height="22"
+                                    Margin="6,0,0,0"
+                                    Padding="8,0"
+                                    Background="{DynamicResource SurfaceMutedBrush}"
+                                    BorderBrush="{DynamicResource BorderBrush}"
+                                    BorderThickness="1"
+                                    CornerRadius="6">
+                                <TextBlock Text="Ctrl+E+F HUD"
+                                           FontFamily="{StaticResource MonoFontFamily}"
+                                           FontSize="8"
                                            FontWeight="SemiBold"
                                            Foreground="{DynamicResource TextSecondaryBrush}" />
                             </Border>

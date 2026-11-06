@@ -20,6 +20,7 @@ public sealed class WindowItemViewModel : ObservableObject
     private bool _isForeground;
     private bool _isMinimized;
     private bool _isCloaked;
+    private bool _isScrollCurrent;
     private ScreenRect _bounds;
 
     private WindowItemViewModel(ManagedWindow window)
@@ -153,6 +154,12 @@ public sealed class WindowItemViewModel : ObservableObject
                 OnPropertyChanged(nameof(StatusLabel));
             }
         }
+    }
+
+    public bool IsScrollCurrent
+    {
+        get => _isScrollCurrent;
+        set => SetProperty(ref _isScrollCurrent, value);
     }
 
     public ScreenRect Bounds => _bounds;
