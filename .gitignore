@@ -1,0 +1,16 @@
+# Build output
+bin/
+obj/
+artifacts/
+*.user
+*.suo
+.vs/
+TestResults/
+__pycache__/
+*.pyc
+
+# Local tooling output
+*.log
+*.tmp
+*.bak
+src/ContextFlow/Assets/*.onnx.tmp
