@@ -20,7 +20,9 @@ public partial class HudWindow : Window
         _isDarkTheme = isDarkTheme;
         InitializeComponent();
         SourceInitialized += (_, _) => WindowEffects.ApplyHudBackdrop(this, _isDarkTheme);
+        StateChanged += (_, _) => UpdateWindowChromeState();
         Closing += OnClosing;
+        UpdateWindowChromeState();
     }
 
     public void RefreshComposition(bool isDarkTheme)
@@ -116,6 +118,25 @@ public partial class HudWindow : Window
             return;
         }
 
+        if (e.ClickCount == 2)
+        {
+            ToggleMaximize();
+            e.Handled = true;
+            return;
+        }
+
+        // A maximized window cannot be resized or dragged normally. Restore it
+        // first and keep the cursor over the header so the drag feels natural.
+        if (WindowState == WindowState.Maximized)
+        {
+            var position = e.GetPosition(this);
+            var screenPoint = PointToScreen(position);
+            WindowState = WindowState.Normal;
+            var dpi = VisualTreeHelper.GetDpi(this);
+            Left = screenPoint.X / dpi.DpiScaleX - position.X;
+            Top = screenPoint.Y / dpi.DpiScaleY - position.Y;
+        }
+
         try
         {
             DragMove();
@@ -124,6 +145,30 @@ public partial class HudWindow : Window
         {
             // DragMove can throw if the button state changes between events.
         }
+    }
+
+    private void MaximizeButton_OnClick(object sender, RoutedEventArgs e) => ToggleMaximize();
+
+    private void ToggleMaximize()
+    {
+        WindowState = WindowState == WindowState.Maximized
+            ? WindowState.Normal
+            : WindowState.Maximized;
+    }
+
+    private void UpdateWindowChromeState()
+    {
+        if (MaximizeButton is null || Shell is null)
+        {
+            return;
+        }
+
+        var maximized = WindowState == WindowState.Maximized;
+        MaximizeButton.Content = maximized ? "❐" : "□";
+        MaximizeButton.ToolTip = maximized
+            ? "Restore HUD (double-click header)"
+            : "Maximize HUD (double-click header)";
+        Shell.CornerRadius = maximized ? new CornerRadius(0) : new CornerRadius(20);
     }
 
     private void ProcessList_OnMouseDoubleClick(object sender, MouseButtonEventArgs e)

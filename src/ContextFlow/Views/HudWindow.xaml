@@ -182,6 +182,15 @@
                                 FontSize="9.5"
                                 Command="{Binding Commands.OptimizeNow}"
                                 ToolTip="Run one local AI optimization pass now (Ctrl+Shift+F)" />
+                        <Button x:Name="MaximizeButton"
+                                Margin="0,0,8,0"
+                                Style="{StaticResource IconButtonStyle}"
+                                Content="□"
+                                FontFamily="Segoe UI Symbol"
+                                FontSize="14"
+                                AutomationProperties.Name="Maximize or restore HUD"
+                                Click="MaximizeButton_OnClick"
+                                ToolTip="Maximize / restore (double-click header)" />
                         <Button Style="{StaticResource IconButtonStyle}"
                                 Content="—"
                                 FontFamily="{StaticResource BodyFontFamily}"
