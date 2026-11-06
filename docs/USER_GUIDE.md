@@ -16,7 +16,27 @@ The app starts as a translucent floating bubble near the screen edge. There is n
 - **Double-click the tray icon** — open the HUD.
 - A second launch of `ContextFlow.exe` opens the HUD of the existing instance.
 
-It is a chord: hold Ctrl and press **E**, then **F** while Ctrl is held. Both keys must be down at the same time.
+It is a chord: hold Ctrl and press **E**, then **F** while Ctrl is held. Both keys must be down at the same time. The app waits 180 ms to tell a lone Ctrl+E/Ctrl+F from the chord, so a quick Ctrl+E or Ctrl+F scrolls windows and the complete chord toggles the HUD.
+
+## Infinite window scroll
+
+When the HUD is collapsed, the managed windows form a circular vertical desktop ordered by capsule position and window creation time:
+
+- **Ctrl + E** — previous window (scroll up). At the first window it wraps to the last.
+- **Ctrl + F** — next window (scroll down). At the last window it wraps to the first.
+- The selected window is restored if minimized, maximized if it supports it, and brought to the foreground.
+- The HUD process matrix highlights the current scroll window and shows its position (`3 / 12`) next to **Application windows**.
+- The **▲ / ▼** buttons in the process matrix header trigger the same actions. They collapse the HUD first so the selected window is visible.
+- The footer shows the global shortcuts; the current window title and position are always visible in the process matrix header.
+
+This is a practical, non-invasive approximation of an infinite compositor: Windows does not expose a public API for a true endless desktop, so ContextFlow turns the window ring into a full-screen workspace sequence.
+
+## Window controls
+
+- Drag the HUD header to move it to any monitor. Its position and size are saved under `%LOCALAPPDATA%\ContextFlow\settings.json`.
+- Drag any resize border to resize the HUD while it is restored.
+- Double-click the header or click **□ / ❐** to maximize or restore. A maximized HUD restores to its previous normal rectangle.
+- Drag the floating bubble to any monitor; it stays where you drop it instead of snapping back to the primary display.
 
 ## HUD regions
 
@@ -65,10 +85,12 @@ Each row contains:
 
 Actions:
 
-- **Click the capsule pill** → choose another capsule. The window is assigned and, if a target display exists, routed there.
+- **Click the capsule pill** → choose another capsule. The window is assigned and, if a target display exists, routed there. The menu stays anchored to the place where you clicked even while the matrix refreshes.
 - **Double-click a row** or use **↗** → focus that window and collapse the HUD so you can work.
+- **▲ / ▼** → previous or next window in the infinite scroll ring.
 - **Filter windows…** → search by title, process, or capsule.
 - **ALL / CAPSULE** → show every managed window or only the active capsule.
+- The current scroll window has an accent-tinted row. The header shows its title and position (`current / total`).
 - The matrix is a snapshot refreshed approximately once per second.
 
 ### Canvas overview
@@ -81,7 +103,7 @@ A pannable, zoomable topology of your capsules.
 - **Click a capsule** to activate it.
 - **Double-click** the map to fit all capsules.
 
-This is a logical canvas. Windows are not literally rendered on an infinite virtual desktop; activating a capsule maps its window set to its target monitor. This is explained in `ARCHITECTURE.md`.
+The canvas is a logical topology of capsules. The actual infinite desktop interaction is the Ctrl+E/Ctrl+F window ring described above: each selected window is maximized and focused, so you can scroll through full-screen work contexts. Activating a capsule maps its window set to its target monitor. This is explained in `ARCHITECTURE.md`.
 
 ### AI activity journal
 

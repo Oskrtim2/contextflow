@@ -30,7 +30,7 @@ It is a per-user, `asInvoker` application. It is not a service, driver, shell ex
                                 │ events + commands
 ┌───────────────────────────────▼──────────────────────────────────────┐
 │ AppController — composition root and lifecycle                       │
-│  owns all services, tray icon, hotkey, single instance, animations   │
+│  owns services, tray, hotkey, WindowNavigator, single instance, UI   │
 └───────┬───────────┬────────────┬──────────────┬──────────────┬───────┘
         │           │            │              │              │
 ┌───────▼──────┐ ┌──▼─────────┐ ┌▼───────────┐ ┌▼───────────┐ ┌▼──────┐
@@ -88,20 +88,43 @@ If the process is killed, the session journal restores external state on the nex
 
 ---
 
-## 4. Global hotkey
+## 4. Global shortcuts
 
-Requirement: **Ctrl + E + F** chord.
+Requirements:
+
+- **Ctrl + E** — previous managed window (scroll up).
+- **Ctrl + F** — next managed window (scroll down).
+- **Ctrl + E + F** — open or collapse the HUD.
 
 `RegisterHotKey` can only register modifiers plus a single virtual key. It cannot register two non-modifier keys pressed together, so the app uses `SetWindowsHookEx(WH_KEYBOARD_LL)`.
 
 `GlobalHotkeyHook`:
 
-- Tracks physical E and F key-down state.
+- Tracks physical E and F key-down state and ignores key repeat, so one physical press produces one action.
 - Checks `GetAsyncKeyState(VK_CONTROL)` on each relevant event.
-- Fires once per chord until a key is released.
-- Uses the WPF dispatcher to raise `Pressed` on the UI thread.
+- Starts a 180 ms disambiguation timer for a lone Ctrl+E or Ctrl+F.
+- If the other key is pressed within the window, cancels the pending scroll and raises the Ctrl+E+F `Pressed` event.
+- If the timer expires, raises `PreviousRequested` or `NextRequested` on the UI thread. If the key is still held, the chord is suppressed until both keys are released, so a slow second key cannot open the HUD accidentally.
+- Resets state on key-up. A timer that fires after both keys were released does not leave the next shortcut blocked.
 - Always calls `CallNextHookEx`; the hook is observational, never swallowing input.
-- Fails closed: if hook installation fails, the HUD still opens from the tray and bubble; the status footer reports `HOTKEY UNAVAILABLE`.
+- Fails closed: if hook installation fails, the HUD still opens from the tray and bubble; the status footer reports `HOTKEYS UNAVAILABLE`.
+
+`AppController` handles navigation by collapsing the topmost HUD first, then asking `WindowNavigator` to focus and maximize the target window.
+
+### Window scroll model
+
+`WindowNavigator` builds a deterministic circular order from the 1-second `WindowManager` snapshot:
+
+1. Capsules in `AppSettings.Capsules` order (the logical vertical desktop).
+2. Windows within a capsule by `FirstSeenUtc`, then handle.
+
+`Ctrl+E` decrements and `Ctrl+F` increments the index; the arithmetic wraps in both directions. `WindowManager.FocusAndMaximizeWindow` restores minimized windows, maximizes windows that expose `WS_MAXIMIZEBOX`, and calls the existing `FocusWindow` thread-input path.
+
+Because the snapshot can lag up to one second, a navigation performed in the last 1.5 seconds is treated as authoritative; `WindowsChanged` snapshots captured during that interval do not overwrite the selected handle. Outside that interval the real foreground window is authoritative. This prevents rapid Ctrl+F presses from selecting the same window twice.
+
+### HUD and bubble placement
+
+Both windows use the virtual desktop rectangle (`SystemParameters.VirtualScreen*`), not the primary-monitor `WorkArea`, so they can be moved to either display. `AppController` stores the HUD's normal rectangle and maximized flag in `AppSettings`; `LocationChanged`, `SizeChanged`, and `StateChanged` are debounced before persistence. On the next open, saved bounds are clamped to the current virtual desktop, which keeps the HUD on its monitor even after a hide/show cycle or a monitor topology change.
 
 ---
 

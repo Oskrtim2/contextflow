@@ -2,13 +2,15 @@
 
 **Contextual Environment Manager for Windows 11** — a local-first workspace HUD for dual-monitor workflows, with an offline AI policy engine for prioritizing the windows you are actually using.
 
-ContextFlow lives on the desktop as a translucent floating bubble. Press **Ctrl + E + F** and it expands into a Fluent-inspired telemetry HUD with live CPU, RAM, and GPU load, managed window geometry, workflow capsules, and a draggable monitor router. When idle, an embedded ONNX policy can **below-normal-throttle inactive processes**, **trim their working sets**, and **cloak inactive capsules from DWM composition** — without cloud services, accounts, or network access.
+ContextFlow lives on the desktop as a translucent floating bubble. Press **Ctrl + E + F** and it expands into a Fluent-inspired telemetry HUD with live CPU, RAM, and GPU load, managed window geometry, workflow capsules, and a draggable monitor router. When the HUD is collapsed, **Ctrl + E** and **Ctrl + F** scroll backward and forward through an infinite ring of managed windows, maximizing the selected window so it behaves like a Pop!_OS workspace. When idle, an embedded ONNX policy can **below-normal-throttle inactive processes**, **trim their working sets**, and **cloak inactive capsules from DWM composition** — without cloud services, accounts, or network access.
 
 ---
 
 ## Highlights
 
-- **Ctrl+E+F global chord** that works from any application without stealing keystrokes.
+- **Ctrl+E+F global chord** that opens or collapses the HUD from any application.
+- **Infinite window scroll**: **Ctrl+E** and **Ctrl+F** move through a circular, capsule-ordered ring of managed windows and maximize/focus the selected one. At the ends it wraps around instead of stopping.
+- **Multi-monitor floating UI**: the bubble and HUD can be dragged to any display and remember their position, size, and maximized state. The HUD can be resized normally, maximized, and restored with the header button or a double-click.
 - **Floating semi-transparent bubble** with drag-to-reposition and edge snapping. The HUD and bubble use real Windows 11 Acrylic/Mica composition, DWM rounded corners, and immersive dark mode.
 - **Spatial workflow capsules** across a logical infinite canvas, each assigned to a physical display. Capsule activation moves the whole window set to its target monitor.
 - **Live process matrix** showing app icon, window title, process/PID, assigned capsule, monitor, physical coordinates, window size, and live state. Move a window to another capsule directly from its capsule pill.
@@ -114,7 +116,8 @@ contextflow/  (repository root)
    │  ├─ ThemeService.cs
    │  ├─ TrayIconService.cs
    │  ├─ WindowEffects.cs
-   │  └─ WindowManager.cs
+   │  ├─ WindowManager.cs
+   │  └─ WindowNavigator.cs
    ├─ Themes/
    │  ├─ Dark.xaml
    │  ├─ Light.xaml
@@ -161,11 +164,13 @@ The production package is self-contained and does not require this.
 
 1. ContextFlow starts as a translucent bubble near the right edge of the primary monitor.
 2. Press **Ctrl + E + F**. Hold Ctrl and press E and F together; the chord is detected globally.
-3. Click a capsule to activate it and route its windows to that capsule's display.
-4. Drag the pill switch under **Route active capsule** to send the active capsule to another display.
-5. Click the capsule pill on any process row to move that window to another capsule.
-6. Use the **Auto optimize** and **Capsule isolation** switches. Capsule isolation is opt-in because it hides windows from DWM composition.
-7. Press **Esc** or the **—** button to collapse back to the bubble.
+3. With the HUD collapsed, press **Ctrl + E** for the previous window or **Ctrl + F** for the next window. The selected window is restored, maximized, and focused; the ring wraps infinitely.
+4. Click a capsule to activate it and route its windows to that capsule's display.
+5. Drag the pill switch under **Route active capsule** to send the active capsule to another display.
+6. Click the capsule pill on any process row to move that window to another capsule.
+7. Use the **Auto optimize** and **Capsule isolation** switches. Capsule isolation is opt-in because it hides windows from DWM composition.
+8. Drag the HUD header to another monitor, resize its borders, or use the **□ / ❐** header button to maximize/restore.
+9. Press **Esc** or the **—** button to collapse back to the bubble.
 
 The second launch of `ContextFlow.exe` signals the existing instance to open its HUD rather than creating a duplicate background process.
 
@@ -236,8 +241,9 @@ WPF views
         │
 AppController (composition root + lifecycle + hotkey + single-instance + tray)
         │
-        ├─ GlobalHotkeyHook ── WH_KEYBOARD_LL chord detector
+        ├─ GlobalHotkeyHook ── WH_KEYBOARD_LL Ctrl+E / Ctrl+F / Ctrl+E+F detector
         ├─ WindowManager ───── EnumWindows, DWM bounds, assignments, DeferWindowPos routing, DWM cloak
+        ├─ WindowNavigator ── circular capsule-ordered window scroll + maximize/focus
         ├─ DisplayService ──── EnumDisplayMonitors, per-monitor work areas & DPI
         ├─ TelemetryService ── 500 ms CPU/RAM/GPU sampler
         ├─ HardwareAIOptimizer ─ policy application, priority restoration, working-set trim
@@ -253,9 +259,14 @@ Read **[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)** for the detailed data flow
 
 ## Hotkey Implementation Note
 
-`RegisterHotKey` supports modifiers plus **one** virtual key. It cannot represent “Ctrl + E + F pressed together.” The requirement is implemented as a global low-level keyboard hook (`WH_KEYBOARD_LL`) that observes the chord and never suppresses input: every event is forwarded with `CallNextHookEx`.
+`RegisterHotKey` supports modifiers plus **one** virtual key. It cannot represent “Ctrl + E + F pressed together.” ContextFlow therefore uses a global low-level keyboard hook (`WH_KEYBOARD_LL`) with a short (180 ms) disambiguation window:
 
-This is documented in `GlobalHotkeyHook.cs`. Running at normal integrity is intentional; ContextFlow is a user-session utility, not a system service or driver.
+- **Ctrl+E** or **Ctrl+F** starts a pending scroll action.
+- If the other key is pressed within the window, the pending scroll is cancelled and **Ctrl+E+F** toggles the HUD.
+- If the second key arrives later, the scroll action has already fired; the chord is suppressed until both keys are released so a slow second key cannot accidentally open the HUD.
+- Key repeat is ignored; one physical press produces one navigation step.
+
+The hook observes input and forwards events with `CallNextHookEx`. It is documented in `GlobalHotkeyHook.cs`. Running at normal integrity is intentional; ContextFlow is a user-session utility, not a system service or driver.
 
 ---
 
@@ -299,7 +310,7 @@ There is no network code in the application. Telemetry is read locally via Win32
 
 ContextFlow is deliberately honest about the platform:
 
-- **No public infinite-desktop compositor API exists.** Capsules are a logical infinite canvas in the HUD. Activating a capsule maps its window set onto a physical monitor while preserving relative geometry. This is the stable, non-invasive way to emulate continuous workspace switching on Windows.
+- **No public infinite-desktop compositor API exists.** Capsules are a logical infinite canvas in the HUD, and Ctrl+E/Ctrl+F provide a practical infinite *window* ring: the selected window is brought to the foreground and maximized while preserving its monitor. Activating a capsule maps its window set onto a physical monitor while preserving relative geometry. This is the stable, non-invasive way to emulate continuous workspace switching on Windows.
 - **DWM does not expose per-app thumbnail refresh throttling.** The optimizer first attempts DWM composition cloaking (`DWMWA_CLOAK`) for inactive capsule windows. On current Windows 11 builds, `DwmSetWindowAttribute` can return `E_ACCESSDENIED` for windows owned by another process; ContextFlow detects this and falls back to a reversible minimize that removes the window from the interactive composition surface. Both paths are journaled and restored on capsule activation, normal exit, or crash recovery. It does not inject into DWM.
 - **Cross-process window geometry is best-effort.** Elevated windows may reject `SetWindowPos`; ContextFlow reports the failure and leaves the window untouched.
 - The DWM attribute used for cloaking is undocumented-but-stable. The isolation feature is opt-in, uses a safe fallback, and is restored on exit/crash recovery.
@@ -311,6 +322,9 @@ ContextFlow is deliberately honest about the platform:
 
 - Debug and Release builds with .NET 8 targeting and SDK 10.
 - App starts as a bubble; global hotkey opens the HUD; pressing it again collapses to the bubble.
+- Ctrl+E/Ctrl+F scroll through managed windows, maximize the selection, wrap at the ring ends, and do not trigger the HUD chord.
+- HUD and bubble can be dragged between both monitors, resized, maximized, and restored across hide/show cycles.
+- Capsule pill menus stay anchored at the click position while the process matrix refreshes.
 - Single-instance activation opens the running instance's HUD.
 - Light and dark resource themes; DWM composition and acrylic rendering on Windows 11.
 - Embedded ONNX policy graph loads locally; telemetry shows CPU, RAM, and PDH GPU usage.
