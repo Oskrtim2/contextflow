@@ -49,6 +49,15 @@ public sealed class AppSettings
         Capsules ??= new List<CapsuleDefinition>();
         ProcessExclusions ??= new List<string>();
 
+        // Never let a failed/unarranged window geometry reach JSON. System.Text.Json
+        // refuses to serialize NaN and Infinity.
+        BubbleLeft = FiniteOrNull(BubbleLeft);
+        BubbleTop = FiniteOrNull(BubbleTop);
+        HudLeft = FiniteOrNull(HudLeft);
+        HudTop = FiniteOrNull(HudTop);
+        HudWidth = FiniteOrNull(HudWidth);
+        HudHeight = FiniteOrNull(HudHeight);
+
         foreach (var capsule in Capsules)
         {
             if (string.IsNullOrWhiteSpace(capsule.Id))
@@ -69,4 +78,7 @@ public sealed class AppSettings
             ActiveCapsuleId = Capsules.FirstOrDefault()?.Id ?? string.Empty;
         }
     }
+
+    private static double? FiniteOrNull(double? value) =>
+        value.HasValue && double.IsFinite(value.Value) ? value : null;
 }

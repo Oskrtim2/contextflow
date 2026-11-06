@@ -490,7 +490,17 @@ public sealed class AppController
             ? new Rect(_hud.Left, _hud.Top, _hud.Width, _hud.Height)
             : _hud.RestoreBounds;
 
-        if (bounds.IsEmpty || bounds.Width < 1 || bounds.Height < 1)
+        // WPF reports NaN for a window that has never been arranged (for
+        // example when the diagnostic smoke test exits without opening the
+        // HUD). System.Text.Json rejects NaN/Infinity, so never persist an
+        // invalid rectangle.
+        if (bounds.IsEmpty ||
+            !double.IsFinite(bounds.Left) ||
+            !double.IsFinite(bounds.Top) ||
+            !double.IsFinite(bounds.Width) ||
+            !double.IsFinite(bounds.Height) ||
+            bounds.Width < 1 ||
+            bounds.Height < 1)
         {
             return;
         }
