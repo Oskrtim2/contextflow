@@ -149,11 +149,21 @@ public partial class HudWindow : Window
             return;
         }
 
+        // The process list refreshes every second. If the ContextMenu follows the
+        // pill button as its PlacementTarget, WPF recalculates the popup position
+        // when that row is updated and the menu visibly jumps to another place.
+        // Anchor the popup to an absolute screen point captured at click time.
+        var dpi = VisualTreeHelper.GetDpi(placementTarget);
+        var screenPoint = placementTarget.PointToScreen(
+            new Point(placementTarget.ActualWidth / 2, placementTarget.ActualHeight));
+
         var menu = new ContextMenu
         {
             Style = (Style)FindResource("CapsuleContextMenuStyle"),
-            PlacementTarget = placementTarget,
-            Placement = PlacementMode.Bottom
+            PlacementTarget = this,
+            Placement = PlacementMode.AbsolutePoint,
+            HorizontalOffset = screenPoint.X / dpi.DpiScaleX,
+            VerticalOffset = screenPoint.Y / dpi.DpiScaleY
         };
 
         menu.Items.Add(new MenuItem
