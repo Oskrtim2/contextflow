@@ -22,6 +22,16 @@ public sealed class AppSettings
     public double? BubbleLeft { get; set; }
     public double? BubbleTop { get; set; }
 
+    /// <summary>
+    /// Last normal HUD rectangle. Stored in WPF device-independent units so the
+    /// window can be restored on whichever physical monitor the user chose.
+    /// </summary>
+    public double? HudLeft { get; set; }
+    public double? HudTop { get; set; }
+    public double? HudWidth { get; set; }
+    public double? HudHeight { get; set; }
+    public bool HudMaximized { get; set; }
+
     public bool HasCompletedFirstRun { get; set; }
 
     public List<CapsuleDefinition> Capsules { get; set; } = new();

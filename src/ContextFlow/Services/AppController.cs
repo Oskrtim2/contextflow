@@ -39,6 +39,8 @@ public sealed class AppController
     private bool _hudVisible;
     private bool _shutdownStarted;
     private bool _started;
+    private bool _suppressHudPlacementSave;
+    private DispatcherTimer? _hudPlacementSaveTimer;
 
     public AppController(AppPaths paths, AppLog log)
     {
@@ -151,6 +153,9 @@ public sealed class AppController
         {
             DataContext = _viewModel
         };
+        _hud.LocationChanged += (_, _) => ScheduleHudPlacementSave();
+        _hud.SizeChanged += (_, _) => ScheduleHudPlacementSave();
+        _hud.StateChanged += (_, _) => ScheduleHudPlacementSave();
 
         _bubble = new BubbleWindow
         {
@@ -338,6 +343,7 @@ public sealed class AppController
                 return;
             }
 
+            SaveHudPlacement();
             await _hud.PlayHideAnimationAsync().ConfigureAwait(true);
             _hud.Hide();
             _hudVisible = false;
@@ -363,18 +369,104 @@ public sealed class AppController
 
     private void PositionHud()
     {
-        if (_hud is null)
+        if (_hud is null || _settings is null)
         {
             return;
         }
 
-        var work = SystemParameters.WorkArea;
-        var width = Math.Min(1320, Math.Max(_hud.MinWidth, work.Width - 32));
-        var height = Math.Min(820, Math.Max(_hud.MinHeight, work.Height - 32));
-        _hud.Width = width;
-        _hud.Height = height;
-        _hud.Left = work.Left + Math.Max(0, (work.Width - width) / 2);
-        _hud.Top = work.Top + Math.Max(0, (work.Height - height) / 2);
+        _suppressHudPlacementSave = true;
+        try
+        {
+            // Default to the primary work area on first run. On later runs the
+            // saved rectangle is validated against the whole virtual desktop,
+            // so a HUD moved to a secondary monitor (including negative X)
+            // stays there when it is hidden and shown again.
+            var primary = SystemParameters.WorkArea;
+            var virtualLeft = SystemParameters.VirtualScreenLeft;
+            var virtualTop = SystemParameters.VirtualScreenTop;
+            var virtualRight = virtualLeft + SystemParameters.VirtualScreenWidth;
+            var virtualBottom = virtualTop + SystemParameters.VirtualScreenHeight;
+            var maxWidth = Math.Max(_hud.MinWidth, SystemParameters.VirtualScreenWidth - 16);
+            var maxHeight = Math.Max(_hud.MinHeight, SystemParameters.VirtualScreenHeight - 16);
+
+            var width = Math.Min(1320, Math.Max(_hud.MinWidth, primary.Width - 32));
+            var height = Math.Min(820, Math.Max(_hud.MinHeight, primary.Height - 32));
+            var left = primary.Left + Math.Max(0, (primary.Width - width) / 2);
+            var top = primary.Top + Math.Max(0, (primary.Height - height) / 2);
+
+            var stored = _settings.Current;
+            if (stored.HudLeft.HasValue && stored.HudTop.HasValue &&
+                stored.HudWidth is > 0 && stored.HudHeight is > 0)
+            {
+                width = Math.Clamp(stored.HudWidth.Value, _hud.MinWidth, maxWidth);
+                height = Math.Clamp(stored.HudHeight.Value, _hud.MinHeight, maxHeight);
+                left = Math.Clamp(stored.HudLeft.Value, virtualLeft + 8, virtualRight - width - 8);
+                top = Math.Clamp(stored.HudTop.Value, virtualTop + 8, virtualBottom - height - 8);
+            }
+
+            _hud.WindowState = WindowState.Normal;
+            _hud.Width = width;
+            _hud.Height = height;
+            _hud.Left = left;
+            _hud.Top = top;
+
+            if (stored.HudMaximized)
+            {
+                _hud.WindowState = WindowState.Maximized;
+            }
+        }
+        finally
+        {
+            _suppressHudPlacementSave = false;
+        }
+    }
+
+    private void ScheduleHudPlacementSave()
+    {
+        if (_suppressHudPlacementSave || _hud is null || _settings is null || _shutdownStarted)
+        {
+            return;
+        }
+
+        if (_hudPlacementSaveTimer is null)
+        {
+            _hudPlacementSaveTimer = new DispatcherTimer(DispatcherPriority.Background)
+            {
+                Interval = TimeSpan.FromMilliseconds(350)
+            };
+            _hudPlacementSaveTimer.Tick += (_, _) =>
+            {
+                _hudPlacementSaveTimer?.Stop();
+                SaveHudPlacement();
+            };
+        }
+
+        _hudPlacementSaveTimer.Stop();
+        _hudPlacementSaveTimer.Start();
+    }
+
+    private void SaveHudPlacement()
+    {
+        if (_hud is null || _settings is null)
+        {
+            return;
+        }
+
+        var bounds = _hud.WindowState == WindowState.Normal
+            ? new Rect(_hud.Left, _hud.Top, _hud.Width, _hud.Height)
+            : _hud.RestoreBounds;
+
+        if (bounds.IsEmpty || bounds.Width < 1 || bounds.Height < 1)
+        {
+            return;
+        }
+
+        _settings.Current.HudLeft = bounds.Left;
+        _settings.Current.HudTop = bounds.Top;
+        _settings.Current.HudWidth = bounds.Width;
+        _settings.Current.HudHeight = bounds.Height;
+        _settings.Current.HudMaximized = _hud.WindowState == WindowState.Maximized;
+        _settings.Save(_settings.Current);
     }
 
     private void OnThemeChangeRequested(bool isDark)
@@ -486,6 +578,7 @@ public sealed class AppController
 
             if (_settings is not null)
             {
+                SaveHudPlacement();
                 _settings.Save(_settings.Current);
             }
 

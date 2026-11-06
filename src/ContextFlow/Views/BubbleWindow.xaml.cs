@@ -46,14 +46,22 @@ public partial class BubbleWindow : Window
 
     public void PositionOnScreen(AppSettingsPosition stored)
     {
-        var workArea = SystemParameters.WorkArea;
-        var defaultLeft = workArea.Right - Width - EdgeMargin;
-        var defaultTop = workArea.Top + workArea.Height * 0.56;
+        // SystemParameters.WorkArea is the primary monitor only. Use the full
+        // virtual desktop for validation so a bubble saved on a secondary
+        // display is not forced back to the primary monitor.
+        var primary = SystemParameters.WorkArea;
+        var virtualLeft = SystemParameters.VirtualScreenLeft;
+        var virtualTop = SystemParameters.VirtualScreenTop;
+        var virtualRight = virtualLeft + SystemParameters.VirtualScreenWidth;
+        var virtualBottom = virtualTop + SystemParameters.VirtualScreenHeight;
+
+        var defaultLeft = primary.Right - Width - EdgeMargin;
+        var defaultTop = primary.Top + primary.Height * 0.56;
         Left = stored.HasPosition ? stored.Left : defaultLeft;
         Top = stored.HasPosition ? stored.Top : defaultTop;
 
-        if (Left < workArea.Left || Left > workArea.Right - Width ||
-            Top < workArea.Top || Top > workArea.Bottom - Height)
+        if (Left < virtualLeft || Left > virtualRight - Width ||
+            Top < virtualTop || Top > virtualBottom - Height)
         {
             Left = defaultLeft;
             Top = defaultTop;
@@ -62,31 +70,38 @@ public partial class BubbleWindow : Window
 
     public void SnapIntoWorkArea()
     {
-        var workArea = SystemParameters.WorkArea;
-        var left = Math.Clamp(Left, workArea.Left + 4, workArea.Right - Width - 4);
-        var top = Math.Clamp(Top, workArea.Top + 4, workArea.Bottom - Height - 4);
+        // Clamp against the virtual desktop, not the primary monitor. The
+        // previous implementation moved every dropped bubble back to the
+        // primary display because WorkArea only describes that monitor.
+        var virtualLeft = SystemParameters.VirtualScreenLeft;
+        var virtualTop = SystemParameters.VirtualScreenTop;
+        var virtualRight = virtualLeft + SystemParameters.VirtualScreenWidth;
+        var virtualBottom = virtualTop + SystemParameters.VirtualScreenHeight;
 
-        var leftDistance = Math.Abs(left - (workArea.Left + EdgeMargin));
-        var rightDistance = Math.Abs(left - (workArea.Right - Width - EdgeMargin));
-        var topDistance = Math.Abs(top - (workArea.Top + EdgeMargin));
-        var bottomDistance = Math.Abs(top - (workArea.Bottom - Height - EdgeMargin));
+        var left = Math.Clamp(Left, virtualLeft + 4, virtualRight - Width - 4);
+        var top = Math.Clamp(Top, virtualTop + 4, virtualBottom - Height - 4);
+
+        var leftDistance = Math.Abs(left - (virtualLeft + EdgeMargin));
+        var rightDistance = Math.Abs(left - (virtualRight - Width - EdgeMargin));
+        var topDistance = Math.Abs(top - (virtualTop + EdgeMargin));
+        var bottomDistance = Math.Abs(top - (virtualBottom - Height - EdgeMargin));
 
         if (leftDistance < 24)
         {
-            left = workArea.Left + EdgeMargin;
+            left = virtualLeft + EdgeMargin;
         }
         else if (rightDistance < 24)
         {
-            left = workArea.Right - Width - EdgeMargin;
+            left = virtualRight - Width - EdgeMargin;
         }
 
         if (topDistance < 24)
         {
-            top = workArea.Top + EdgeMargin;
+            top = virtualTop + EdgeMargin;
         }
         else if (bottomDistance < 24)
         {
-            top = workArea.Bottom - Height - EdgeMargin;
+            top = virtualBottom - Height - EdgeMargin;
         }
 
         Left = left;
