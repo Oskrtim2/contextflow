@@ -1,0 +1,17 @@
+<Application x:Class="ContextFlow.App"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:infra="clr-namespace:ContextFlow.Infrastructure"
+             ShutdownMode="OnExplicitShutdown">
+    <Application.Resources>
+        <ResourceDictionary>
+            <ResourceDictionary.MergedDictionaries>
+                <ResourceDictionary Source="Themes/Light.xaml" />
+                <ResourceDictionary Source="Themes/Styles.xaml" />
+            </ResourceDictionary.MergedDictionaries>
+
+            <infra:BooleanToVisibilityConverter x:Key="BooleanToVisibility" />
+            <infra:InverseBooleanConverter x:Key="InverseBoolean" />
+        </ResourceDictionary>
+    </Application.Resources>
+</Application>
