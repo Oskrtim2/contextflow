@@ -17,12 +17,34 @@ ContextFlow lives on the desktop as a translucent floating bubble. Press **Ctrl 
 - **Spatial workflow capsules** across a logical infinite canvas, each assigned to a physical display. Capsule activation moves the whole window set to its target monitor.
 - **Live process matrix** showing app icon, window title, process/PID, assigned capsule, monitor, physical coordinates, window size, and live state. Move a window to another capsule directly from its capsule pill.
 - **Live telemetry**: asynchronous 500 ms CPU (`GetSystemTimes`), physical memory (`GlobalMemoryStatusEx`), and GPU Engine utilization through PDH's locale-independent `PdhAddEnglishCounter`.
-- **100% local AI optimizer**: an embedded 9-feature ONNX policy model executed by embedded ONNX Runtime. No network APIs, no cloud, no model download. A managed fallback makes startup resilient.
-- **Conservative resource policies**: priority class throttling, working set compaction, inactive-capsule isolation (DWM cloak where Windows permits it, with a reversible minimize fallback), protected-process exclusions, per-process cooldowns, max blast radius per pass, and automatic restoration.
+- **Adaptive local AI optimizer (v2)**: an embedded 12-feature ONNX policy model executed by embedded ONNX Runtime, fed by real per-app CPU/memory and by signals it learns on the device. No network APIs, no cloud, no model download. A managed fallback makes startup resilient. See [AI v2](#ai-v2-adaptive-optimizer).
+- **Performance tab**: a task-manager view that groups every process into its application (a browser and all its renderers count as one app) with live CPU and memory bars, AI state badges, and one-click **Optimize / Restore**, **Protect**, and **End app** actions. A side panel shows live system pressure, the AI profile selector, session savings, and AI recommendations.
+- **Per-app CPU · RAM column** in the window matrix of the Workspace tab, with an arrow marker on apps the AI is currently optimizing.
+- **Safe resource policies**: priority class + EcoQoS throttling, low memory priority, working set compaction only under memory pressure, inactive-capsule isolation (DWM cloak where Windows permits it, with a reversible minimize fallback), protected-process exclusions, audio protection, cooldowns, an adaptive maximum number of actions per pass, and automatic restoration.
 - **Crash-consistency journal**: if ContextFlow is terminated unexpectedly, the next launch restores any priority or DWM state it left behind.
 - **Light first** (`#F8FAFC`, `#FFFFFF`, `#6366F1`, `#0F172A`) and optional dark theme (`#0F172A`, `#1E293B`, `#F8FAFC`).
 - **Local JSON persistence** under `%LOCALAPPDATA%\ContextFlow`.
 - **Single-file, self-contained deployment** with an Inno Setup installer recipe, a packaged smoke test, optional Authenticode signing, and a commercial release checklist.
+
+---
+
+## AI v2: adaptive optimizer
+
+The first optimizer looked at one process per window, used fixed thresholds, and only reacted every 10 seconds. Version 2 changes how it observes, decides and acts:
+
+| Area | v1 | v2 |
+|---|---|---|
+| What it sees | The PID that owns a window | The whole **app family**: one `NtQuerySystemInformation` call per 2 s reads every process, and the parent chain groups helpers (browser renderers, WebView2, GPU/utility processes) under their app |
+| CPU signal | System-wide only | Real **per-app CPU**, smoothed, plus a slow "sustained background CPU" average that catches hidden CPU hogs |
+| Decision model | 9 features, fixed weights | 12 features: adds background CPU share and three **learned** signals |
+| Learning | None | `AdaptiveUsageModel` learns per app: **affinity** (how much you use it, 3-day half-life), **daily rhythm** (24-hour histogram, so apps you usually open at this hour are spared) and **regret** (you came back within 5 minutes of an optimization, so that app is protected more). Stored in `ai-profile.json` |
+| Cadence | Fixed 10 s, max 3 actions | Adapts to **pressure**: relaxed 15 s, normal 8 s, high 4 s, critical 3 s; the number of actions per pass and the thresholds scale with it, with the **profile** (Conservative / Balanced / Aggressive), and on battery |
+| Memory | Always `EmptyWorkingSet` after 2 min | Lowers **memory priority** first (Windows trims those pages first only when it needs to). Hard trims only when RAM is actually filling up (or in Aggressive mode), with per-app cooldowns |
+| Restore | On the next pass (up to 10 s) | **Instant**: as soon as a throttled app's window gets focus, the whole family gets its priority back |
+| Safety | Protected names, active page | Also never touches apps **playing audio** (Core Audio session peak meter), visible windows on the active page, services (session 0), high/real-time priority processes, or ContextFlow itself. Apps you are using cannot be optimized manually either |
+| Scope | Windowed apps only | Also windowless user apps (tray apps, updaters, dev servers) when they burn CPU in the background or memory is under high pressure |
+
+All changes remain journaled in `session-guard.json`, so a crash or a forced kill is undone on the next launch, including the memory priority.
 
 ---
 
@@ -105,16 +127,20 @@ contextflow/  (repository root)
    │  ├─ OptimizationEvent.cs
    │  ├─ PageLayout.cs
    │  ├─ PolicyModels.cs
+   │  ├─ ProcessModels.cs
    │  ├─ ScreenRect.cs
    │  └─ TelemetrySnapshot.cs
    ├─ Services/
    │  ├─ AppController.cs
    │  ├─ DisplayService.cs
    │  ├─ GlobalHotkeyHook.cs
+   │  ├─ AdaptiveUsageModel.cs
+   │  ├─ AudioActivityMonitor.cs
    │  ├─ HardwareAIOptimizer.cs
    │  ├─ IconService.cs
    │  ├─ LocalAiPolicyEngine.cs
    │  ├─ LocalizationService.cs
+   │  ├─ ProcessMonitor.cs
    │  ├─ SessionGuard.cs
    │  ├─ SettingsService.cs
    │  ├─ SingleInstanceService.cs
@@ -132,6 +158,7 @@ contextflow/  (repository root)
    │  └─ Strings.es.xaml
    ├─ ViewModels/
    │  ├─ ActivityItemViewModel.cs
+   │  ├─ AppResourceItemViewModel.cs
    │  ├─ CapsuleItemViewModel.cs
    │  ├─ DisplayItemViewModel.cs
    │  ├─ MainViewModel.cs
@@ -257,8 +284,10 @@ AppController (composition root + lifecycle + hotkey + single-instance + tray)
         ├─ LocalizationService ── English/Spanish runtime resource dictionaries
         ├─ DisplayService ──── EnumDisplayMonitors, per-monitor work areas & DPI
         ├─ TelemetryService ── 500 ms CPU/RAM/GPU sampler
-        ├─ HardwareAIOptimizer ─ policy application, priority restoration, working-set trim
-        ├─ LocalAiPolicyEngine ─ embedded ONNX model + managed fallback
+        ├─ HardwareAIOptimizer ─ adaptive policy: app families, pressure tuning, throttle/trim/restore
+        ├─ ProcessMonitor ──── 2 s process table, per-app CPU, app families, audio sessions
+        ├─ AdaptiveUsageModel ─ on-device learning: affinity, daily rhythm, regret
+        ├─ LocalAiPolicyEngine ─ embedded 12-feature ONNX model + managed fallback
         ├─ SessionGuard ────── crash-consistency journal for external state
         ├─ SettingsService ─── atomic JSON persistence
         └─ ThemeService ────── runtime light/dark resource swap
@@ -294,8 +323,9 @@ ContextFlow runs as `asInvoker`. It can only touch windows/processes the current
 
 Additional safeguards:
 
-- At most three process groups are changed per policy pass.
-- Working-set trimming requires at least 2 minutes of inactivity and applies per-process cooldowns (15 minutes).
+- The number of app families changed per pass is bounded (1–10, depending on the profile and the live pressure level).
+- Working-set trimming only runs when memory is under pressure (or in Aggressive mode), requires a profile-dependent idle time, and applies per-app cooldowns (15 minutes, 5 under critical pressure).
+- Apps that played audio in the last 30 seconds are never throttled.
 - Original process priorities and EcoQoS state are restored when a capsule/window becomes active, AI is paused, or ContextFlow exits.
 - DWM isolation is opt-in and journaled; the next launch attempts recovery if the app process dies unexpectedly.
 
@@ -309,6 +339,7 @@ See **[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)** and **[docs/USER_GUIDE.md](
 %LOCALAPPDATA%\ContextFlow\
 ├─ settings.json          capsule topology, theme, bubble position, toggles
 ├─ settings.backup.json   last known-good settings
+├─ ai-profile.json        what the local AI learned about your app usage (resettable from the Performance tab)
 ├─ session-guard.json     transient crash-recovery journal (only while needed)
 └─ logs\contextflow.log   rolling local diagnostic log (max ~2 MB)
 ```
