@@ -29,6 +29,12 @@ public sealed class AppSettings
     /// </summary>
     public bool CapsuleIsolation { get; set; }
 
+    /// <summary>
+    /// Full-screen workspace mode: maximize every app window while ContextFlow
+    /// runs, so the infinite window scroll feels like full-screen workspaces.
+    /// </summary>
+    public bool AutoMaximizeWindows { get; set; } = true;
+
     public string ActiveCapsuleId { get; set; } = string.Empty;
 
     public double? BubbleLeft { get; set; }

@@ -106,6 +106,7 @@ public sealed class AppController
         WireViewModel();
 
         _windowManager.SetCapsuleIsolation(_settings.Current.CapsuleIsolation);
+        _windowManager.SetAutoMaximize(_settings.Current.AutoMaximizeWindows);
         _optimizer.IsEnabled = _settings.Current.AutoOptimize;
         _windowManager.ConfigureCapsules(
             _settings.Current.Capsules,
@@ -727,6 +728,7 @@ public sealed class AppController
             _hotkey?.Dispose();
             _tray?.Dispose();
             _optimizer?.RestoreAllPriorities("Emergency application exit.");
+        _windowManager?.RestoreAutoMaximizedWindows();
             _windowManager?.RestoreAllIsolatedWindows();
             if (_settings is not null)
             {

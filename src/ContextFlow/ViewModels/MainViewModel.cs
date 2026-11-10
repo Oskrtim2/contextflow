@@ -318,6 +318,28 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         }
     }
 
+    public bool IsAutoMaximizeEnabled
+    {
+        get => _settingsService.Current.AutoMaximizeWindows;
+        set
+        {
+            if (_settingsService.Current.AutoMaximizeWindows == value)
+            {
+                return;
+            }
+
+            _settingsService.Current.AutoMaximizeWindows = value;
+            SaveSettings();
+            _windowManager.SetAutoMaximize(value);
+            OnPropertyChanged();
+            OnPropertyChanged(nameof(IsSplitLayoutAvailable));
+            HudFocusRequested?.Invoke(this, EventArgs.Empty);
+        }
+    }
+
+    /// <summary>Split page layouts only apply when full-screen mode is off.</summary>
+    public bool IsSplitLayoutAvailable => !IsAutoMaximizeEnabled;
+
     public string AiStatusText => LocalizationService.Get(
         IsOptimizationEnabled ? "AiActive" : "AiPausedStatus");
 

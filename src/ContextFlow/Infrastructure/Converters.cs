@@ -29,3 +29,13 @@ public sealed class InverseBooleanConverter : IValueConverter
     public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture) =>
         value is bool b ? !b : false;
 }
+
+/// <summary>Half of a length; sizes the glossy highlight on chrome and gel buttons.</summary>
+public sealed class HalfLengthConverter : IValueConverter
+{
+    public object Convert(object value, Type targetType, object parameter, CultureInfo culture) =>
+        value is double d && d > 0 ? Math.Max(0, d / 2 - 1) : 0d;
+
+    public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture) =>
+        Binding.DoNothing;
+}

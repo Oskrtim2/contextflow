@@ -58,6 +58,10 @@ public sealed class WindowManager : IAsyncDisposable
     private Task? _trackingTask;
     private string _activeCapsuleId = string.Empty;
     private bool _isolationEnabled;
+    private bool _autoMaximize;
+
+    // Windows ContextFlow maximized itself, so they can be put back on exit.
+    private readonly HashSet<IntPtr> _autoMaximized = new();
 
     public WindowManager(DisplayService displays, IconService icons, SessionGuard sessionGuard, AppLog log)
     {
@@ -145,6 +149,106 @@ public sealed class WindowManager : IAsyncDisposable
         RaiseWindowsChanged(changed);
     }
 
+    /// <summary>
+    /// Full-screen workspace mode: every resizable app window is maximized when
+    /// it appears and whenever it gains focus, so scrolling through windows feels
+    /// like moving across full-screen workspaces. A window the user restores by
+    /// hand is left alone until focus leaves it and comes back.
+    /// </summary>
+    public bool AutoMaximize
+    {
+        get
+        {
+            lock (_gate)
+            {
+                return _autoMaximize;
+            }
+        }
+    }
+
+    public void SetAutoMaximize(bool enabled)
+    {
+        List<IntPtr> toMaximize;
+        lock (_gate)
+        {
+            if (_autoMaximize == enabled)
+            {
+                return;
+            }
+
+            _autoMaximize = enabled;
+            toMaximize = enabled
+                ? _tracked.Values
+                    .Where(t => !t.Window.IsMinimized && !t.Window.IsCloaked)
+                    .Select(t => t.Window.Handle)
+                    .ToList()
+                : new List<IntPtr>();
+        }
+
+        if (enabled)
+        {
+            foreach (var hwnd in toMaximize)
+            {
+                TryAutoMaximize(hwnd);
+            }
+
+            _log.Info($"Full-screen workspace mode enabled for {toMaximize.Count} window(s).");
+        }
+        else
+        {
+            RestoreAutoMaximizedWindows();
+        }
+    }
+
+    private void TryAutoMaximize(IntPtr hwnd)
+    {
+        if (!NativeMethods.IsWindow(hwnd) || NativeMethods.IsIconic(hwnd) || NativeMethods.IsZoomed(hwnd))
+        {
+            return;
+        }
+
+        // Dialogs and fixed-size tool windows cannot (and should not) be maximized.
+        var style = NativeMethods.GetWindowLongPtr(hwnd, NativeMethods.GWL_STYLE).ToInt64();
+        if ((style & NativeMethods.WS_MAXIMIZEBOX) == 0 || (style & NativeMethods.WS_THICKFRAME) == 0)
+        {
+            return;
+        }
+
+        if (NativeMethods.ShowWindowAsync(hwnd, NativeMethods.SW_MAXIMIZE))
+        {
+            lock (_gate)
+            {
+                _autoMaximized.Add(hwnd);
+            }
+        }
+    }
+
+    /// <summary>Restores windows that ContextFlow maximized and that are still maximized.</summary>
+    public void RestoreAutoMaximizedWindows()
+    {
+        List<IntPtr> handles;
+        lock (_gate)
+        {
+            handles = _autoMaximized.ToList();
+            _autoMaximized.Clear();
+        }
+
+        var restored = 0;
+        foreach (var hwnd in handles)
+        {
+            if (NativeMethods.IsWindow(hwnd) && NativeMethods.IsZoomed(hwnd) &&
+                NativeMethods.ShowWindowAsync(hwnd, NativeMethods.SW_RESTORE))
+            {
+                restored++;
+            }
+        }
+
+        if (restored > 0)
+        {
+            _log.Info($"Restored {restored} window(s) maximized by full-screen workspace mode.");
+        }
+    }
+
     public void Start()
     {
         lock (_gate)
@@ -192,6 +296,7 @@ public sealed class WindowManager : IAsyncDisposable
         lock (_scanGate)
         {
             IReadOnlyList<ManagedWindow> snapshot;
+            var maximizeQueue = new List<IntPtr>();
 
             lock (_gate)
             {
@@ -279,6 +384,13 @@ public sealed class WindowManager : IAsyncDisposable
                         ZOrder = zOrder++,
                         Window = window
                     };
+
+                    // Full-screen mode: new windows, and windows that just gained focus.
+                    var gainedFocus = foreground && previous is not null && !previous.Window.IsForeground;
+                    if (_autoMaximize && !window.IsMinimized && !cloaked && (previous is null || gainedFocus))
+                    {
+                        maximizeQueue.Add(hwnd);
+                    }
                 }
 
                 var stale = _tracked.Keys.Where(h => !currentHandles.Contains(h)).ToList();
@@ -286,6 +398,7 @@ public sealed class WindowManager : IAsyncDisposable
                 {
                     _tracked.Remove(hwnd);
                     _assignments.Remove(hwnd);
+                    _autoMaximized.Remove(hwnd);
                     if (_appCloaked.Remove(hwnd) || _appMinimized.Remove(hwnd))
                     {
                         _sessionGuard.UnregisterIsolatedWindow(hwnd);
@@ -299,6 +412,11 @@ public sealed class WindowManager : IAsyncDisposable
                 }
 
                 snapshot = BuildSnapshotLocked();
+            }
+
+            foreach (var hwnd in maximizeQueue)
+            {
+                TryAutoMaximize(hwnd);
             }
 
             WindowsChanged?.Invoke(this, new WindowsChangedEventArgs(snapshot));
@@ -603,6 +721,11 @@ public sealed class WindowManager : IAsyncDisposable
             return new CapsuleMoveResult(0, 0);
         }
 
+        if (AutoMaximize)
+        {
+            return StackMaximizedOnDisplay(handles, targetDisplay, focusFirst, capsuleId);
+        }
+
         var slots = BuildPageSlots(handles.Count, layout, targetDisplay.WorkArea);
         var moved = 0;
         var failed = 0;
@@ -661,6 +784,63 @@ public sealed class WindowManager : IAsyncDisposable
             $"Page '{capsuleId}' arranged {moved} window(s) on {targetDisplay.Label} " +
             $"using {layout} layout; {failed} failed.");
 
+        return new CapsuleMoveResult(moved, failed);
+    }
+
+    /// <summary>
+    /// Full-screen mode replacement for split tiling: every window of the page is
+    /// moved to the target display and maximized there, like stacked workspaces.
+    /// </summary>
+    private CapsuleMoveResult StackMaximizedOnDisplay(
+        IReadOnlyList<IntPtr> handles,
+        DisplayInfo targetDisplay,
+        bool focusFirst,
+        string capsuleId)
+    {
+        var moved = 0;
+        var failed = 0;
+        var work = targetDisplay.WorkArea;
+        foreach (var handle in handles)
+        {
+            var placement = new NativeMethods.WINDOWPLACEMENT
+            {
+                length = (uint)System.Runtime.InteropServices.Marshal.SizeOf<NativeMethods.WINDOWPLACEMENT>()
+            };
+            NativeMethods.GetWindowPlacement(handle, ref placement);
+
+            var normal = placement.rcNormalPosition;
+            var width = Math.Min(Math.Max(normal.Right - normal.Left, 640), work.Width);
+            var height = Math.Min(Math.Max(normal.Bottom - normal.Top, 480), work.Height);
+            var left = work.X + (work.Width - width) / 2;
+            var top = work.Y + (work.Height - height) / 2;
+
+            placement.showCmd = NativeMethods.SW_SHOWNORMAL;
+            placement.rcNormalPosition = new NativeMethods.RECT
+            {
+                Left = left,
+                Top = top,
+                Right = left + width,
+                Bottom = top + height
+            };
+
+            // Restore onto the target monitor first; maximizing then fills that monitor.
+            if (NativeMethods.SetWindowPlacement(handle, ref placement))
+            {
+                moved++;
+                TryAutoMaximize(handle);
+            }
+            else
+            {
+                failed++;
+            }
+        }
+
+        if (focusFirst && moved > 0)
+        {
+            FocusWindow(handles[0]);
+        }
+
+        _log.Info($"Page '{capsuleId}' stacked {moved} maximized window(s) on {targetDisplay.Label}; {failed} failed.");
         return new CapsuleMoveResult(moved, failed);
     }
 
@@ -1184,6 +1364,7 @@ public sealed class WindowManager : IAsyncDisposable
         }
 
         RestoreAllIsolatedWindows();
+        RestoreAutoMaximizedWindows();
         cts?.Dispose();
         _log.Info("Window tracking stopped and isolated window state restored.");
     }

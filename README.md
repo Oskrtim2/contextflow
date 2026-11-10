@@ -48,6 +48,11 @@ All changes remain journaled in `session-guard.json`, so a crash or a forced kil
 
 ---
 
+## Full-screen workspaces and the Chrome skin
+
+- **Full-screen workspaces** (Settings, on by default): while ContextFlow runs, every resizable app window is maximized when it appears and each time it gains focus, so Ctrl+E / Ctrl+F scrolls across full-screen workspaces. Dialogs and fixed-size windows are left alone. Windows ContextFlow maximized are restored when the mode is turned off or the app exits (including emergency exit). Split page layouts are disabled while this mode is on; moving a page to a display stacks its windows maximized there.
+- **Chrome skin**: an original retro media-player style. Brushed aluminium (light) or gunmetal (dark) panels, chrome title band, round chrome buttons, glossy blue gel buttons, and the CPU/RAM/GPU cards drawn as backlit blue LCD screens with scanlines.
+
 ## Technology
 
 | Layer | Choice |

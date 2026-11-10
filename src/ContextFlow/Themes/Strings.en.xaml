@@ -154,6 +154,11 @@
     <sys:String x:Key="AwaitingPolicyDecision">Awaiting first policy decision</sys:String>
     <sys:String x:Key="LocalPolicyLabel">LOCAL POLICY</sys:String>
 
+    <!-- Full-screen workspace mode -->
+    <sys:String x:Key="FullScreenTitle">Full-screen workspaces</sys:String>
+    <sys:String x:Key="FullScreenDetail">Maximizes every app window while ContextFlow is open, when it appears and each time you switch to it, so Ctrl+E / Ctrl+F feels like an infinite scroll of full-screen workspaces. Windows go back to their previous size when you turn this off or close ContextFlow.</sys:String>
+    <sys:String x:Key="SplitLayoutDisabledHint">Turn off full-screen workspaces to tile pages with split layouts.</sys:String>
+
     <!-- AI v2 + Performance tab -->
     <sys:String x:Key="TabPerformance">PERFORMANCE</sys:String>
     <sys:String x:Key="PerformanceEyebrow">PERFORMANCE MONITOR</sys:String>

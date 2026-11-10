@@ -55,7 +55,7 @@
         <Border x:Name="Shell"
                 Background="{DynamicResource HudBackgroundBrush}"
                 BorderBrush="{DynamicResource WindowBorderBrush}"
-                BorderThickness="1"
+                BorderThickness="1.5"
                 CornerRadius="20">
             <Grid>
                 <Grid.RowDefinitions>
@@ -63,6 +63,25 @@
                     <RowDefinition Height="*" />
                     <RowDefinition Height="42" />
                 </Grid.RowDefinitions>
+
+                <!-- Brushed-metal sheen, chrome title band and footer band. -->
+                <Border Grid.RowSpan="3"
+                        CornerRadius="19"
+                        Background="{DynamicResource MetalSheenBrush}"
+                        IsHitTestVisible="False" />
+                <Border Grid.Row="0"
+                        CornerRadius="19,19,0,0"
+                        Background="{DynamicResource HeaderBrush}"
+                        BorderBrush="{DynamicResource ChromeEdgeBrush}"
+                        BorderThickness="0,0,0,1"
+                        IsHitTestVisible="False" />
+                <Border Grid.Row="2"
+                        CornerRadius="0,0,19,19"
+                        Background="{DynamicResource HeaderBrush}"
+                        BorderBrush="{DynamicResource ChromeEdgeBrush}"
+                        BorderThickness="0,1,0,0"
+                        Opacity="0.85"
+                        IsHitTestVisible="False" />
 
                 <!-- ============================ HEADER ============================ -->
                 <Grid x:Name="HeaderBar"
@@ -1774,6 +1793,35 @@
                                         BorderBrush="{DynamicResource BorderBrush}"
                                         BorderThickness="1"
                                         CornerRadius="12">
+                                    <Grid>
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="Auto" />
+                                        </Grid.ColumnDefinitions>
+                                        <StackPanel Margin="0,0,16,0">
+                                            <TextBlock Text="{DynamicResource FullScreenTitle}"
+                                                       FontSize="12"
+                                                       FontWeight="SemiBold" />
+                                            <TextBlock Text="{DynamicResource FullScreenDetail}"
+                                                       Margin="0,3,0,0"
+                                                       FontSize="9"
+                                                       Foreground="{DynamicResource TextTertiaryBrush}"
+                                                       TextWrapping="Wrap" />
+                                        </StackPanel>
+                                        <ToggleButton Grid.Column="1"
+                                                      Style="{StaticResource SwitchToggleStyle}"
+                                                      VerticalAlignment="Center"
+                                                      AutomationProperties.Name="Toggle full-screen workspaces"
+                                                      IsChecked="{Binding IsAutoMaximizeEnabled, Mode=TwoWay}" />
+                                    </Grid>
+                                </Border>
+
+                                <Border Margin="0,12,0,0"
+                                        Padding="16"
+                                        Background="{DynamicResource SurfaceSoftBrush}"
+                                        BorderBrush="{DynamicResource BorderBrush}"
+                                        BorderThickness="1"
+                                        CornerRadius="12">
                                     <StackPanel>
                                         <TextBlock Text="{DynamicResource Language}"
                                                    FontSize="12"
@@ -1919,7 +1967,15 @@
                                                    Margin="0,3,0,0"
                                                    FontSize="9"
                                                    Foreground="{DynamicResource TextTertiaryBrush}" />
-                                        <StackPanel Orientation="Horizontal" Margin="0,10,0,0">
+                                        <TextBlock Text="{DynamicResource SplitLayoutDisabledHint}"
+                                                   Margin="0,3,0,0"
+                                                   FontSize="9"
+                                                   FontWeight="SemiBold"
+                                                   Foreground="{DynamicResource WarningBrush}"
+                                                   Visibility="{Binding IsAutoMaximizeEnabled, Converter={StaticResource BooleanToVisibility}}" />
+                                        <StackPanel Orientation="Horizontal"
+                                                    Margin="0,10,0,0"
+                                                    IsEnabled="{Binding IsSplitLayoutAvailable}">
                                             <RadioButton GroupName="PageLayoutChoice"
                                                          Style="{StaticResource FilterChipStyle}"
                                                          Content="{DynamicResource LayoutAuto}"

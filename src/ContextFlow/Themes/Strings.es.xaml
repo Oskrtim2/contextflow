@@ -154,6 +154,11 @@
     <sys:String x:Key="AwaitingPolicyDecision">Esperando la primera decisión de política</sys:String>
     <sys:String x:Key="LocalPolicyLabel">POLÍTICA LOCAL</sys:String>
 
+    <!-- Full-screen workspace mode -->
+    <sys:String x:Key="FullScreenTitle">Espacios a pantalla completa</sys:String>
+    <sys:String x:Key="FullScreenDetail">Maximiza todas las ventanas mientras ContextFlow está abierto, al aparecer y cada vez que cambias a ellas, para que Ctrl+E / Ctrl+F se sienta como un scroll infinito de espacios a pantalla completa. Las ventanas vuelven a su tamaño anterior al desactivarlo o al cerrar ContextFlow.</sys:String>
+    <sys:String x:Key="SplitLayoutDisabledHint">Desactiva los espacios a pantalla completa para dividir las páginas en mosaico.</sys:String>
+
     <!-- AI v2 + Performance tab -->
     <sys:String x:Key="TabPerformance">RENDIMIENTO</sys:String>
     <sys:String x:Key="PerformanceEyebrow">MONITOR DE RENDIMIENTO</sys:String>
