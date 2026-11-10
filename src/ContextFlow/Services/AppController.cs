@@ -31,6 +31,7 @@ public sealed class AppController
     private TelemetryService? _telemetry;
     private LocalAiPolicyEngine? _policy;
     private HardwareAIOptimizer? _optimizer;
+    private ProcessMonitor? _processes;
     private GlobalHotkeyHook? _hotkey;
     private TrayIconService? _tray;
     private MainViewModel? _viewModel;
@@ -78,12 +79,15 @@ public sealed class AppController
         _telemetry = new TelemetryService(_log);
         _policy = new LocalAiPolicyEngine(_log);
         _policy.WarmUp();
+        _processes = new ProcessMonitor(_log);
         _optimizer = new HardwareAIOptimizer(
             _windowManager,
             _telemetry,
             _policy,
             _settings,
             _sessionGuard,
+            _processes,
+            new AdaptiveUsageModel(_paths.AiProfileFile, _log),
             () => _settings.Current.Capsules,
             _log);
 
@@ -94,6 +98,7 @@ public sealed class AppController
             _navigator,
             _optimizer,
             _telemetry,
+            _processes,
             _localization,
             _log);
 
@@ -108,6 +113,7 @@ public sealed class AppController
 
         _windowManager.Start();
         _telemetry.Start();
+        _processes.Start();
         _optimizer.Start();
 
         CreateWindows(settings);
@@ -667,6 +673,11 @@ public sealed class AppController
             if (_optimizer is not null)
             {
                 await _optimizer.DisposeAsync().ConfigureAwait(true);
+            }
+
+            if (_processes is not null)
+            {
+                await _processes.DisposeAsync().ConfigureAwait(true);
             }
 
             if (_windowManager is not null)

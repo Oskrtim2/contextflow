@@ -185,6 +185,17 @@ public sealed class SessionGuard
                     NativeMethods.ProcessPowerThrottling,
                     ref state,
                     (uint)System.Runtime.InteropServices.Marshal.SizeOf<NativeMethods.PROCESS_POWER_THROTTLING_STATE>());
+
+                // AI v2 also lowers memory priority while an app is throttled.
+                var memory = new NativeMethods.MEMORY_PRIORITY_INFORMATION
+                {
+                    MemoryPriority = NativeMethods.MEMORY_PRIORITY_NORMAL
+                };
+                NativeMethods.SetProcessMemoryPriority(
+                    handle,
+                    NativeMethods.ProcessMemoryPriority,
+                    ref memory,
+                    (uint)System.Runtime.InteropServices.Marshal.SizeOf<NativeMethods.MEMORY_PRIORITY_INFORMATION>());
             }
             catch (Exception ex)
             {

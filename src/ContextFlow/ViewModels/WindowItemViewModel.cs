@@ -23,6 +23,9 @@ public sealed class WindowItemViewModel : ObservableObject
     private bool _isCloaked;
     private bool _isScrollCurrent;
     private ScreenRect _bounds;
+    private string _cpuText = "—";
+    private string _memoryText = "—";
+    private bool _isAiOptimized;
 
     private WindowItemViewModel(ManagedWindow window)
     {
@@ -164,6 +167,32 @@ public sealed class WindowItemViewModel : ObservableObject
     }
 
     public ScreenRect Bounds => _bounds;
+
+    /// <summary>CPU of the whole app family (browser + renderers, etc.).</summary>
+    public string CpuText
+    {
+        get => _cpuText;
+        private set => SetProperty(ref _cpuText, value);
+    }
+
+    public string MemoryText
+    {
+        get => _memoryText;
+        private set => SetProperty(ref _memoryText, value);
+    }
+
+    public bool IsAiOptimized
+    {
+        get => _isAiOptimized;
+        private set => SetProperty(ref _isAiOptimized, value);
+    }
+
+    public void UpdateResources(AppFamily? family, bool optimized)
+    {
+        CpuText = family is null ? "—" : $"{family.CpuPercent:0.0}%";
+        MemoryText = family is null ? "—" : AppResourceItemViewModel.FormatMemory(family.MemoryMb);
+        IsAiOptimized = optimized;
+    }
 
     public string StatusLabel => LocalizationService.Get(
         IsForeground

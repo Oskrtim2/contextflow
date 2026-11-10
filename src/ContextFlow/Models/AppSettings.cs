@@ -11,6 +11,9 @@ public sealed class AppSettings
     public bool IsDarkTheme { get; set; }
     public bool AutoOptimize { get; set; } = true;
 
+    /// <summary>How hard the local AI optimizes: Conservative, Balanced or Aggressive.</summary>
+    public AiProfile AiProfile { get; set; } = AiProfile.Balanced;
+
     /// <summary>Split-screen layout used when a page is activated.</summary>
     public PageLayout PageLayout { get; set; } = PageLayout.Auto;
 
@@ -66,6 +69,11 @@ public sealed class AppSettings
         HudTop = FiniteOrNull(HudTop);
         HudWidth = FiniteOrNull(HudWidth);
         HudHeight = FiniteOrNull(HudHeight);
+
+        if (!Enum.IsDefined(AiProfile))
+        {
+            AiProfile = AiProfile.Balanced;
+        }
 
         Language = string.Equals(Language, "es", StringComparison.OrdinalIgnoreCase) ? "es" : "en";
         ScrollUpHotkey = HotkeyGesture.Parse(ScrollUpHotkey, HotkeyGesture.DefaultScrollUp).Display;

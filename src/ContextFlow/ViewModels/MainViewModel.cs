@@ -23,6 +23,10 @@ public sealed class MainViewModel : ObservableObject, IDisposable
     private readonly WindowNavigator _navigator;
     private readonly HardwareAIOptimizer _optimizer;
     private readonly TelemetryService _telemetry;
+    private readonly ProcessMonitor _processes;
+    private readonly Dictionary<int, AppResourceItemViewModel> _appLookup = new();
+    private ProcessSnapshot _processSnapshot = ProcessSnapshot.Empty;
+    private AiStats _aiStats;
     private readonly LocalizationService _localization;
     private readonly AppLog _log;
     private readonly Dispatcher _dispatcher;
@@ -62,7 +66,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
     private string _currentWindowProcess = LocalizationService.Get("ScrollHint");
     private string _windowScrollPositionText = "—";
     private bool _hasScrollWindow;
-    private bool _isWorkspaceTab = true;
+    private HudTab _tab = HudTab.Workspace;
     private bool _isCapturingHotkey;
     private bool _captureScrollUp;
     private string _settingsStatusMessage = string.Empty;
@@ -75,6 +79,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         WindowNavigator navigator,
         HardwareAIOptimizer optimizer,
         TelemetryService telemetry,
+        ProcessMonitor processes,
         LocalizationService localization,
         AppLog log)
     {
@@ -84,6 +89,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         _navigator = navigator;
         _optimizer = optimizer;
         _telemetry = telemetry;
+        _processes = processes;
         _localization = localization;
         _log = log;
         _dispatcher = Application.Current?.Dispatcher ?? Dispatcher.CurrentDispatcher;
@@ -114,6 +120,9 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         WindowsView.Filter = FilterWindow;
 
         Activity = new ObservableCollection<ActivityItemViewModel>();
+        Apps = new ObservableCollection<AppResourceItemViewModel>();
+        Insights = new ObservableCollection<InsightItemViewModel>();
+        _aiStats = _optimizer.CurrentStats;
         Commands = new MainCommands(this);
 
         _windowManager.WindowsChanged += OnWindowsChanged;
@@ -121,6 +130,8 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         _optimizer.ActivityReported += OnOptimizerActivity;
         _navigator.Navigated += OnWindowNavigated;
         _localization.LanguageChanged += OnLanguageChanged;
+        _processes.SnapshotUpdated += OnProcessSnapshot;
+        _optimizer.StatsChanged += OnAiStats;
 
         _windowManager.ConfigureCapsules(
             _settingsService.Current.Capsules,
@@ -146,6 +157,8 @@ public sealed class MainViewModel : ObservableObject, IDisposable
     public ObservableCollection<DisplayItemViewModel> Displays { get; }
     public ObservableCollection<WindowItemViewModel> Windows { get; }
     public ObservableCollection<ActivityItemViewModel> Activity { get; }
+    public ObservableCollection<AppResourceItemViewModel> Apps { get; }
+    public ObservableCollection<InsightItemViewModel> Insights { get; }
     public ICollectionView WindowsView { get; }
     public MainCommands Commands { get; }
 
@@ -346,31 +359,388 @@ public sealed class MainViewModel : ObservableObject, IDisposable
 
     public bool IsWorkspaceTab
     {
-        get => _isWorkspaceTab;
-        set
-        {
-            if (SetProperty(ref _isWorkspaceTab, value))
-            {
-                if (value)
-                {
-                    CancelHotkeyCapture();
-                }
+        get => _tab == HudTab.Workspace;
+        set { if (value) SetTab(HudTab.Workspace); }
+    }
 
-                OnPropertyChanged(nameof(IsSettingsTab));
-            }
-        }
+    public bool IsPerformanceTab
+    {
+        get => _tab == HudTab.Performance;
+        set { if (value) SetTab(HudTab.Performance); }
     }
 
     public bool IsSettingsTab
     {
-        get => !_isWorkspaceTab;
+        get => _tab == HudTab.Settings;
+        set { if (value) SetTab(HudTab.Settings); }
+    }
+
+    private void SetTab(HudTab tab)
+    {
+        if (_tab == tab)
+        {
+            return;
+        }
+
+        _tab = tab;
+        if (tab != HudTab.Settings)
+        {
+            CancelHotkeyCapture();
+        }
+
+        OnPropertyChanged(nameof(IsWorkspaceTab));
+        OnPropertyChanged(nameof(IsPerformanceTab));
+        OnPropertyChanged(nameof(IsSettingsTab));
+        if (tab == HudTab.Performance)
+        {
+            ApplyProcessSnapshot(_processes.Snapshot);
+        }
+    }
+
+    // ------------------------------------------------------------ AI v2 / performance
+
+    public AiProfile AiProfile
+    {
+        get => _settingsService.Current.AiProfile;
         set
         {
-            if (value)
+            if (_settingsService.Current.AiProfile == value)
             {
-                IsWorkspaceTab = false;
+                return;
+            }
+
+            _settingsService.Current.AiProfile = value;
+            SaveSettings();
+            OnPropertyChanged();
+            OnPropertyChanged(nameof(IsProfileConservative));
+            OnPropertyChanged(nameof(IsProfileBalanced));
+            OnPropertyChanged(nameof(IsProfileAggressive));
+            OnPropertyChanged(nameof(AiProfileDescription));
+            _optimizer.Wake();
+            AddActivity(new OptimizationEvent(
+                DateTimeOffset.Now,
+                "ContextFlow",
+                OptimizationEventKind.PolicyStarted,
+                $"AI profile: {value}",
+                true,
+                "AiProfileChangedFormat",
+                [LocalizationService.Get("Profile" + value)]));
+        }
+    }
+
+    public bool IsProfileConservative
+    {
+        get => AiProfile == AiProfile.Conservative;
+        set { if (value) AiProfile = AiProfile.Conservative; }
+    }
+
+    public bool IsProfileBalanced
+    {
+        get => AiProfile == AiProfile.Balanced;
+        set { if (value) AiProfile = AiProfile.Balanced; }
+    }
+
+    public bool IsProfileAggressive
+    {
+        get => AiProfile == AiProfile.Aggressive;
+        set { if (value) AiProfile = AiProfile.Aggressive; }
+    }
+
+    public string AiProfileDescription => LocalizationService.Get("Profile" + AiProfile + "Detail");
+
+    public PressureLevel AiPressure => _aiStats.Pressure;
+    public string AiPressureText => LocalizationService.Get("Pressure" + _aiStats.Pressure);
+    public string AiIntervalText => LocalizationService.Format("AiIntervalFormat", _aiStats.PassInterval.TotalSeconds);
+    public string AiOptimizedNowText => _aiStats.OptimizedNow.ToString();
+    public string AiReclaimedText => AppResourceItemViewModel.FormatMemory(_aiStats.ReclaimedMbSession);
+    public string AiCpuContainedText => $"{_aiStats.CpuContainedPercent:0.#}%";
+    public string AiActionsText => _aiStats.ActionsSession.ToString();
+    public string AiLearnedAppsText => _aiStats.LearnedApps.ToString();
+    public string AiAccuracyText => $"{_aiStats.Accuracy * 100:0}%";
+    public string AiPowerText => LocalizationService.Get(_aiStats.OnBattery ? "PowerBattery" : "PowerAc");
+
+    private string _appsSummaryText = string.Empty;
+
+    public string AppsSummaryText
+    {
+        get => _appsSummaryText;
+        private set => SetProperty(ref _appsSummaryText, value);
+    }
+
+    private void OnProcessSnapshot(ProcessSnapshot snapshot) => Dispatch(() => ApplyProcessSnapshot(snapshot));
+
+    private void OnAiStats(AiStats stats) => Dispatch(() => ApplyAiStats(stats));
+
+    private void ApplyAiStats(AiStats stats)
+    {
+        _aiStats = stats;
+        OnPropertyChanged(nameof(AiPressure));
+        OnPropertyChanged(nameof(AiPressureText));
+        OnPropertyChanged(nameof(AiIntervalText));
+        OnPropertyChanged(nameof(AiOptimizedNowText));
+        OnPropertyChanged(nameof(AiReclaimedText));
+        OnPropertyChanged(nameof(AiCpuContainedText));
+        OnPropertyChanged(nameof(AiActionsText));
+        OnPropertyChanged(nameof(AiLearnedAppsText));
+        OnPropertyChanged(nameof(AiAccuracyText));
+        OnPropertyChanged(nameof(AiPowerText));
+    }
+
+    private void ApplyProcessSnapshot(ProcessSnapshot snapshot)
+    {
+        if (_isDisposed || snapshot.Processes.Count == 0)
+        {
+            return;
+        }
+
+        _processSnapshot = snapshot;
+
+        // Window rows: per-app CPU and memory.
+        var iconsByRoot = new Dictionary<int, System.Windows.Media.ImageSource>();
+        foreach (var window in Windows)
+        {
+            var family = snapshot.FamilyOf(window.ProcessId);
+            window.UpdateResources(family, family is not null && _optimizer.GetState(family) == AppOptimizationState.Optimized);
+            if (family is not null && window.Icon is not null)
+            {
+                iconsByRoot.TryAdd(family.RootProcessId, window.Icon);
             }
         }
+
+        if (!IsPerformanceTab)
+        {
+            return;
+        }
+
+        var sessionId = System.Diagnostics.Process.GetCurrentProcess().SessionId;
+        bool IsUserApp(AppFamily f) =>
+            snapshot.Processes.TryGetValue(f.RootProcessId, out var root) && root.SessionId == sessionId;
+
+        var candidates = snapshot.Families.Values
+            .Where(f => iconsByRoot.ContainsKey(f.RootProcessId) ||
+                        (IsUserApp(f) && !HardwareAIOptimizer.IsProtectedName(f.Name)))
+            .ToList();
+
+        // Optimized and user-protected apps stay listed even after trimming
+        // shrinks them, so the user can always restore or unprotect them.
+        // They are listed first: what the AI touched is the most relevant info here.
+        var pinned = candidates
+            .Where(f => _optimizer.GetState(f) == AppOptimizationState.Optimized || _optimizer.IsExcluded(f.Name))
+            .OrderByDescending(f => _optimizer.GetState(f) == AppOptimizationState.Optimized)
+            .ThenBy(f => f.Name, StringComparer.OrdinalIgnoreCase);
+        var families = pinned
+            .Concat(candidates.OrderByDescending(f => f.MemoryMb + f.CpuPercent * 60).Take(14))
+            .DistinctBy(f => f.RootProcessId)
+            .ToList();
+
+        var maxCpu = families.Count == 0 ? 1 : families.Max(f => f.CpuPercent);
+        var maxMemory = families.Count == 0 ? 1 : families.Max(f => f.MemoryMb);
+        var keep = families.Select(f => f.RootProcessId).ToHashSet();
+        foreach (var stale in _appLookup.Keys.Where(k => !keep.Contains(k)).ToList())
+        {
+            Apps.Remove(_appLookup[stale]);
+            _appLookup.Remove(stale);
+        }
+
+        for (var i = 0; i < families.Count; i++)
+        {
+            var family = families[i];
+            if (!_appLookup.TryGetValue(family.RootProcessId, out var item))
+            {
+                item = new AppResourceItemViewModel(family);
+                _appLookup[family.RootProcessId] = item;
+                Apps.Insert(Math.Min(i, Apps.Count), item);
+            }
+            else
+            {
+                var current = Apps.IndexOf(item);
+                if (current != i && i < Apps.Count)
+                {
+                    Apps.Move(current, i);
+                }
+            }
+
+            item.Update(family, _optimizer.GetState(family), _optimizer.IsExcluded(family.Name), maxCpu, maxMemory);
+            if (item.Icon is null && iconsByRoot.TryGetValue(family.RootProcessId, out var icon))
+            {
+                item.Icon = icon;
+            }
+        }
+
+        var userFamilies = snapshot.Families.Values.Count(IsUserApp);
+        AppsSummaryText = LocalizationService.Format("AppsSummaryFormat", userFamilies, snapshot.Processes.Count);
+        BuildInsights(families);
+    }
+
+    private void BuildInsights(IReadOnlyList<AppFamily> families)
+    {
+        var insights = new List<InsightItemViewModel>();
+
+        if (_aiStats.Pressure >= PressureLevel.High)
+        {
+            insights.Add(new InsightItemViewModel(
+                "⚡",
+                LocalizationService.Format("InsightPressureTitle", RamPercent),
+                LocalizationService.Get("InsightPressureDetail"),
+                "warning"));
+        }
+
+        var hog = families
+            .Where(f => f.SustainedCpuPercent >= 10 && _optimizer.GetState(f) is not AppOptimizationState.Active)
+            .OrderByDescending(f => f.SustainedCpuPercent)
+            .FirstOrDefault();
+        if (hog is not null)
+        {
+            insights.Add(new InsightItemViewModel(
+                "▲",
+                LocalizationService.Format("InsightCpuTitle", hog.Name, hog.SustainedCpuPercent),
+                LocalizationService.Get(_optimizer.GetState(hog) == AppOptimizationState.Optimized
+                    ? "InsightCpuDetailDone"
+                    : "InsightCpuDetail"),
+                "warning"));
+        }
+
+        var heavy = families.OrderByDescending(f => f.MemoryMb).FirstOrDefault();
+        if (heavy is not null && (heavy.MemoryMb >= 1200 || (_ramTotalGb > 0 && heavy.MemoryMb / 1024 >= _ramTotalGb * 0.15)))
+        {
+            insights.Add(new InsightItemViewModel(
+                "◆",
+                LocalizationService.Format("InsightMemoryTitle", heavy.Name, AppResourceItemViewModel.FormatMemory(heavy.MemoryMb), heavy.ProcessIds.Count),
+                LocalizationService.Get("InsightMemoryDetail"),
+                "accent"));
+        }
+
+        foreach (var audio in families.Where(f => _optimizer.GetState(f) == AppOptimizationState.PlayingAudio).Take(1))
+        {
+            insights.Add(new InsightItemViewModel(
+                "♪",
+                LocalizationService.Format("InsightAudioTitle", audio.Name),
+                LocalizationService.Get("InsightAudioDetail"),
+                "accent"));
+        }
+
+        if (_aiStats.OptimizedNow > 0 || _aiStats.ReclaimedMbSession >= 1)
+        {
+            insights.Add(new InsightItemViewModel(
+                "✓",
+                LocalizationService.Format("InsightSavingsTitle", _aiStats.OptimizedNow, AiReclaimedText),
+                LocalizationService.Get("InsightSavingsDetail"),
+                "success"));
+        }
+
+        insights.Add(new InsightItemViewModel(
+            "✦",
+            LocalizationService.Format("InsightLearningTitle", _aiStats.LearnedApps, AiAccuracyText),
+            LocalizationService.Get("InsightLearningDetail"),
+            "success"));
+
+        if (_aiStats.OnBattery)
+        {
+            insights.Add(new InsightItemViewModel(
+                "▮",
+                LocalizationService.Get("InsightBatteryTitle"),
+                LocalizationService.Get("InsightBatteryDetail"),
+                "accent"));
+        }
+
+        var top = insights.Take(5).ToList();
+        if (top.SequenceEqual(Insights))
+        {
+            return;
+        }
+
+        Insights.Clear();
+        foreach (var insight in top)
+        {
+            Insights.Add(insight);
+        }
+    }
+
+    private void ToggleAppOptimization(AppResourceItemViewModel app)
+    {
+        if (app.IsOptimized)
+        {
+            _optimizer.RestoreFamilyNow(app.RootProcessId);
+            return;
+        }
+
+        if (!IsOptimizationEnabled)
+        {
+            IsOptimizationEnabled = true;
+        }
+
+        var root = app.RootProcessId;
+        _ = Task.Run(() =>
+        {
+            try
+            {
+                _optimizer.OptimizeFamilyNow(root);
+            }
+            catch (Exception ex)
+            {
+                _log.Error("Manual app optimization failed.", ex);
+            }
+        });
+    }
+
+    private void ToggleAppProtection(AppResourceItemViewModel app)
+    {
+        var nowProtected = _optimizer.ToggleProtection(app.Family);
+        AddActivity(new OptimizationEvent(
+            DateTimeOffset.Now,
+            app.Name,
+            OptimizationEventKind.Skipped,
+            nowProtected ? "Protected" : "Unprotected",
+            true,
+            nowProtected ? "AppProtectedDetail" : "AppUnprotectedDetail"));
+        ApplyProcessSnapshot(_processes.Snapshot);
+    }
+
+    private static MessageBoxResult Confirm(string message, MessageBoxImage image)
+    {
+        var owner = Application.Current?.Windows.OfType<Window>().FirstOrDefault(w => w.IsActive);
+        return owner is null
+            ? MessageBox.Show(message, "ContextFlow", MessageBoxButton.YesNo, image)
+            : MessageBox.Show(owner, message, "ContextFlow", MessageBoxButton.YesNo, image);
+    }
+
+    private void EndApp(AppResourceItemViewModel app)
+    {
+        var family = app.Family;
+        var message = LocalizationService.Format("EndAppConfirmFormat", app.Name, family.ProcessIds.Count);
+        if (Confirm(message, MessageBoxImage.Warning) != MessageBoxResult.Yes)
+        {
+            return;
+        }
+
+        var ended = _optimizer.TryEndFamily(family, out var error);
+        AddActivity(new OptimizationEvent(
+            DateTimeOffset.Now,
+            app.Name,
+            ended ? OptimizationEventKind.ProcessEnded : OptimizationEventKind.Error,
+            ended ? "Ended" : error ?? "Error",
+            ended,
+            ended ? "AppEndedDetail" : "AppEndFailedDetail",
+            [family.ProcessIds.Count, error]));
+        ApplyProcessSnapshot(_processes.SampleNow());
+    }
+
+    private void ResetLearning()
+    {
+        if (Confirm(LocalizationService.Get("ResetLearningConfirm"), MessageBoxImage.Question) != MessageBoxResult.Yes)
+        {
+            return;
+        }
+
+        _optimizer.Usage.Reset();
+        ApplyAiStats(_optimizer.CurrentStats);
+        AddActivity(new OptimizationEvent(
+            DateTimeOffset.Now,
+            "ContextFlow",
+            OptimizationEventKind.LearningAdjusted,
+            "Learning reset",
+            true,
+            "LearningResetDetail"));
     }
 
     public bool IsCapturingHotkey
@@ -1108,6 +1478,14 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         {
             capsule.RefreshLocalization();
         }
+
+        for (var i = 0; i < Activity.Count; i++)
+        {
+            Activity[i] = new ActivityItemViewModel(Activity[i].Event);
+        }
+
+        Insights.Clear();
+        ApplyProcessSnapshot(_processes.Snapshot);
     }
 
     private void OnTelemetrySample(TelemetrySnapshot sample)
@@ -1263,6 +1641,8 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         _optimizer.ActivityReported -= OnOptimizerActivity;
         _navigator.Navigated -= OnWindowNavigated;
         _localization.LanguageChanged -= OnLanguageChanged;
+        _processes.SnapshotUpdated -= OnProcessSnapshot;
+        _optimizer.StatsChanged -= OnAiStats;
     }
 
     public sealed class MainCommands
@@ -1314,7 +1694,30 @@ public sealed class MainViewModel : ObservableObject, IDisposable
             NavigatePreviousWindow = new RelayCommand(() => vm.RequestWindowNavigation(-1));
             NavigateNextWindow = new RelayCommand(() => vm.RequestWindowNavigation(1));
             ShowWorkspace = new RelayCommand(() => vm.IsWorkspaceTab = true);
-            ShowSettings = new RelayCommand(() => vm.IsWorkspaceTab = false);
+            ShowSettings = new RelayCommand(() => vm.IsSettingsTab = true);
+            ShowPerformance = new RelayCommand(() => vm.IsPerformanceTab = true);
+            ToggleAppOptimization = new RelayCommand(p =>
+            {
+                if (p is AppResourceItemViewModel app)
+                {
+                    vm.ToggleAppOptimization(app);
+                }
+            });
+            ToggleAppProtection = new RelayCommand(p =>
+            {
+                if (p is AppResourceItemViewModel app)
+                {
+                    vm.ToggleAppProtection(app);
+                }
+            });
+            EndApp = new RelayCommand(p =>
+            {
+                if (p is AppResourceItemViewModel app)
+                {
+                    vm.EndApp(app);
+                }
+            });
+            ResetLearning = new RelayCommand(vm.ResetLearning);
             CaptureScrollUp = new RelayCommand(() => vm.BeginHotkeyCapture(true));
             CaptureScrollDown = new RelayCommand(() => vm.BeginHotkeyCapture(false));
             ResetSettings = new RelayCommand(vm.ResetHotkeyDefaults);
@@ -1335,8 +1738,20 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         public RelayCommand NavigateNextWindow { get; }
         public RelayCommand ShowWorkspace { get; }
         public RelayCommand ShowSettings { get; }
+        public RelayCommand ShowPerformance { get; }
+        public RelayCommand ToggleAppOptimization { get; }
+        public RelayCommand ToggleAppProtection { get; }
+        public RelayCommand EndApp { get; }
+        public RelayCommand ResetLearning { get; }
         public RelayCommand CaptureScrollUp { get; }
         public RelayCommand CaptureScrollDown { get; }
         public RelayCommand ResetSettings { get; }
     }
+}
+
+internal enum HudTab
+{
+    Workspace,
+    Performance,
+    Settings
 }

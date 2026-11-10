@@ -9,6 +9,7 @@ public sealed class ActivityItemViewModel
     public ActivityItemViewModel(OptimizationEvent optimizationEvent)
     {
         Event = optimizationEvent;
+        Detail = optimizationEvent.LocalizedDetail;
         ActionLabel = optimizationEvent.Kind switch
         {
             OptimizationEventKind.PriorityThrottled => LocalizationService.Get("EventPriorityThrottled"),
@@ -21,6 +22,9 @@ public sealed class ActivityItemViewModel
             OptimizationEventKind.PolicyStarted => LocalizationService.Get("EventPolicyStarted"),
             OptimizationEventKind.PolicyStopped => LocalizationService.Get("EventPolicyPaused"),
             OptimizationEventKind.Skipped => LocalizationService.Get("EventSkipped"),
+            OptimizationEventKind.ProtectedAudio => LocalizationService.Get("EventAudioProtected"),
+            OptimizationEventKind.LearningAdjusted => LocalizationService.Get("EventLearning"),
+            OptimizationEventKind.ProcessEnded => LocalizationService.Get("EventProcessEnded"),
             _ => LocalizationService.Get("EventPolicyError")
         };
         IconGlyph = optimizationEvent.Kind switch
@@ -34,13 +38,16 @@ public sealed class ActivityItemViewModel
             OptimizationEventKind.WindowReassigned => "⇢",
             OptimizationEventKind.PolicyStarted => "▶",
             OptimizationEventKind.PolicyStopped => "Ⅱ",
+            OptimizationEventKind.ProtectedAudio => "♪",
+            OptimizationEventKind.LearningAdjusted => "✦",
+            OptimizationEventKind.ProcessEnded => "✕",
             _ => "!"
         };
     }
 
     public OptimizationEvent Event { get; }
     public string ProcessName => Event.ProcessName;
-    public string Detail => Event.Detail;
+    public string Detail { get; } = string.Empty;
     public string TimeLabel => Event.TimeLabel;
     public string ActionLabel { get; }
     public string IconGlyph { get; }

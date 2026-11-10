@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """Generate the embedded, fully offline ContextFlow policy model.
 
-The model is deliberately tiny: a logistic policy (9 features -> 1 score).
+The model is deliberately tiny: a logistic policy (12 features -> 1 score).
+Version 2 adds background CPU share and three on-device learned signals.
 It runs through ONNX Runtime on CPU and adds no network or cloud dependency.
 The coefficients mirror the managed fallback in LocalAiPolicyEngine.cs.
 
@@ -18,24 +19,26 @@ ROOT = Path(__file__).resolve().parents[1]
 OUTPUT = ROOT / "src" / "ContextFlow" / "Assets" / "policy.onnx"
 
 # Keep this ordering identical to PolicyFeatures.ToArray().
-WEIGHTS = np.array(
-    [
-        1.90,   # idle pressure
-        2.80,   # inactive capsule
-        1.10,   # system memory pressure
-        1.60,   # process working-set pressure
-        0.50,   # CPU pressure
-        0.80,   # logical viewport distance
-        0.30,   # window count pressure
-        0.40,   # minimized
-        -4.00,  # foreground / active
-    ],
-    dtype=np.float32,
-).reshape(9, 1)
+FEATURES = [
+    ("idle", 2.00),
+    ("inactive_page", 2.40),
+    ("memory_pressure", 1.40),
+    ("working_set", 1.60),
+    ("system_cpu", 0.50),
+    ("background_cpu", 2.20),
+    ("viewport_distance", 0.60),
+    ("minimized", 0.80),
+    ("foreground", -5.00),
+    ("learned_affinity", -1.20),
+    ("learned_regret", -2.60),
+    ("predicted_use_soon", -1.40),
+]
+N = len(FEATURES)
+WEIGHTS = np.array([w for _, w in FEATURES], dtype=np.float32).reshape(N, 1)
 
-BIAS = np.array([-3.20], dtype=np.float32)
+BIAS = np.array([-3.00], dtype=np.float32)
 
-features = helper.make_tensor_value_info("features", TensorProto.FLOAT, [1, 9])
+features = helper.make_tensor_value_info("features", TensorProto.FLOAT, [1, N])
 output = helper.make_tensor_value_info("optimization_score", TensorProto.FLOAT, [1, 1])
 
 weight_initializer = numpy_helper.from_array(WEIGHTS, name="policy_weights")
@@ -61,12 +64,12 @@ graph = helper.make_graph(
 model = helper.make_model(
     graph,
     producer_name="ContextFlow",
-    producer_version="1.0.0",
+    producer_version="2.0.0",
     opset_imports=[helper.make_opsetid("", 17)],
     doc_string="Fully local ContextFlow hardware optimization policy. No network required.",
 )
 model.ir_version = 8
-model.metadata_props.add(key="features", value="idle,inactive_capsule,memory_pressure,working_set,cpu,viewport_distance,window_count,minimized,foreground")
+model.metadata_props.add(key="features", value=",".join(n for n, _ in FEATURES))
 model.metadata_props.add(key="license", value="Proprietary - ContextFlow")
 model.metadata_props.add(key="output", value="optimization_score")
 

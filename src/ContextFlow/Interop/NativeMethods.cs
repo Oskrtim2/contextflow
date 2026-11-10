@@ -553,4 +553,93 @@ internal static class NativeMethods
     public const int SM_YVIRTUALSCREEN = 77;
     public const int SM_CXVIRTUALSCREEN = 78;
     public const int SM_CYVIRTUALSCREEN = 79;
+
+    // ---- Process memory priority (pages of low-priority processes are trimmed first) ----
+
+    public const int ProcessMemoryPriority = 0;
+    public const uint MEMORY_PRIORITY_LOW = 2;
+    public const uint MEMORY_PRIORITY_NORMAL = 5;
+
+    [StructLayout(LayoutKind.Sequential)]
+    public struct MEMORY_PRIORITY_INFORMATION
+    {
+        public uint MemoryPriority;
+    }
+
+    [DllImport("kernel32.dll", SetLastError = true, EntryPoint = "SetProcessInformation")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    public static extern bool SetProcessMemoryPriority(
+        IntPtr hProcess,
+        int processInformationClass,
+        ref MEMORY_PRIORITY_INFORMATION processInformation,
+        uint processInformationSize);
+
+    // ---- One-call system-wide process table ----
+
+    public const int SystemProcessInformation = 5;
+    public const uint STATUS_INFO_LENGTH_MISMATCH = 0xC0000004;
+
+    [StructLayout(LayoutKind.Sequential)]
+    public struct UNICODE_STRING
+    {
+        public ushort Length;
+        public ushort MaximumLength;
+        public IntPtr Buffer;
+    }
+
+    /// <summary>Documented prefix of SYSTEM_PROCESS_INFORMATION (winternl.h / ntexapi.h).</summary>
+    [StructLayout(LayoutKind.Sequential)]
+    public struct SYSTEM_PROCESS_INFORMATION
+    {
+        public uint NextEntryOffset;
+        public uint NumberOfThreads;
+        public long WorkingSetPrivateSize;
+        public uint HardFaultCount;
+        public uint NumberOfThreadsHighWatermark;
+        public ulong CycleTime;
+        public long CreateTime;
+        public long UserTime;
+        public long KernelTime;
+        public UNICODE_STRING ImageName;
+        public int BasePriority;
+        public IntPtr UniqueProcessId;
+        public IntPtr InheritedFromUniqueProcessId;
+        public uint HandleCount;
+        public uint SessionId;
+        public UIntPtr UniqueProcessKey;
+        public UIntPtr PeakVirtualSize;
+        public UIntPtr VirtualSize;
+        public uint PageFaultCount;
+        public UIntPtr PeakWorkingSetSize;
+        public UIntPtr WorkingSetSize;
+        public UIntPtr QuotaPeakPagedPoolUsage;
+        public UIntPtr QuotaPagedPoolUsage;
+        public UIntPtr QuotaPeakNonPagedPoolUsage;
+        public UIntPtr QuotaNonPagedPoolUsage;
+        public UIntPtr PagefileUsage;
+        public UIntPtr PeakPagefileUsage;
+        public UIntPtr PrivatePageCount;
+    }
+
+    [DllImport("ntdll.dll")]
+    public static extern uint NtQuerySystemInformation(
+        int systemInformationClass,
+        IntPtr systemInformation,
+        int systemInformationLength,
+        out int returnLength);
+
+    [StructLayout(LayoutKind.Sequential)]
+    public struct SYSTEM_POWER_STATUS
+    {
+        public byte ACLineStatus;
+        public byte BatteryFlag;
+        public byte BatteryLifePercent;
+        public byte SystemStatusFlag;
+        public int BatteryLifeTime;
+        public int BatteryFullLifeTime;
+    }
+
+    [DllImport("kernel32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    public static extern bool GetSystemPowerStatus(out SYSTEM_POWER_STATUS status);
 }

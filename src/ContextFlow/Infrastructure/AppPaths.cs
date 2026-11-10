@@ -16,6 +16,7 @@ public sealed class AppPaths
         SettingsBackupFile = Path.Combine(Root, "settings.backup.json");
         SessionGuardFile = Path.Combine(Root, "session-guard.json");
         LogFile = Path.Combine(Root, "logs", "contextflow.log");
+        AiProfileFile = Path.Combine(Root, "ai-profile.json");
     }
 
     public string Root { get; }
@@ -23,6 +24,7 @@ public sealed class AppPaths
     public string SettingsBackupFile { get; }
     public string SessionGuardFile { get; }
     public string LogFile { get; }
+    public string AiProfileFile { get; }
 
     public void EnsureCreated()
     {

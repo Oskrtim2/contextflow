@@ -22,18 +22,22 @@ public sealed class LocalAiPolicyEngine : IDisposable
     // coefficients in source makes the policy explainable and testable.
     private static readonly float[] Weights =
     [
-        1.90f,  // idle pressure
-        2.80f,  // inactive capsule
-        1.10f,  // system memory pressure
-        1.60f,  // process working-set pressure
-        0.50f,  // CPU pressure
-        0.80f,  // logical viewport distance
-        0.30f,  // number of windows in capsule
-        0.40f,  // minimized
-        -4.00f  // foreground / active
+        2.00f,  // idle pressure
+        2.40f,  // window group lives on an inactive page
+        1.40f,  // system memory pressure
+        1.60f,  // family working-set pressure
+        0.50f,  // system CPU pressure
+        2.20f,  // family CPU burned while in background
+        0.60f,  // logical viewport distance
+        0.80f,  // all windows minimized
+        -5.00f, // foreground / active
+        -1.20f, // learned affinity (apps the user lives in)
+        -2.60f, // learned regret (user came back soon after optimization)
+        -1.40f  // learned daily rhythm: likely to be used this hour
     ];
 
-    private const float Bias = -3.20f;
+    private const float Bias = -3.00f;
+    public const string ModelVersion = "2";
 
     private readonly AppLog _log;
     private readonly object _gate = new();
@@ -48,7 +52,7 @@ public sealed class LocalAiPolicyEngine : IDisposable
 
     public bool IsOnnxAvailable { get; private set; }
 
-    public string EngineLabel => IsOnnxAvailable ? "ONNX · local" : "Heuristic · local";
+    public string EngineLabel => IsOnnxAvailable ? "ONNX v2 · local" : "Heuristic v2 · local";
 
     /// <summary>Loads the embedded ONNX graph eagerly so the UI can display the active engine.</summary>
     public void WarmUp()
@@ -143,6 +147,17 @@ public sealed class LocalAiPolicyEngine : IDisposable
             };
 
             _session = new InferenceSession(memory.ToArray(), options);
+            var width = _session.InputMetadata.TryGetValue(InputName, out var input) && input.Dimensions.Length == 2
+                ? input.Dimensions[1]
+                : -1;
+            if (width != PolicyFeatures.Count)
+            {
+                _log.Warn($"Embedded ONNX policy expects {width} features, engine provides {PolicyFeatures.Count}; managed fallback active.");
+                _session.Dispose();
+                _session = null;
+                return;
+            }
+
             IsOnnxAvailable = true;
             _log.Info("Embedded ONNX policy model loaded.");
         }

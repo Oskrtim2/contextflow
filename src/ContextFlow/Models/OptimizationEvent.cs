@@ -12,6 +12,9 @@ public enum OptimizationEventKind
     CapsuleRouted,
     WindowReassigned,
     Skipped,
+    ProtectedAudio,
+    LearningAdjusted,
+    ProcessEnded,
     Error
 }
 
@@ -21,7 +24,31 @@ public sealed record OptimizationEvent(
     string ProcessName,
     OptimizationEventKind Kind,
     string Detail,
-    bool Succeeded)
+    bool Succeeded,
+    string? DetailKey = null,
+    object?[]? DetailArgs = null)
 {
+    /// <summary>Detail localized on the UI thread when a resource key is available.</summary>
+    public string LocalizedDetail
+    {
+        get
+        {
+            if (DetailKey is null)
+            {
+                return Detail;
+            }
+
+            try
+            {
+                var format = Services.LocalizationService.Get(DetailKey);
+                return format == DetailKey ? Detail : string.Format(format, DetailArgs ?? Array.Empty<object?>());
+            }
+            catch (FormatException)
+            {
+                return Detail;
+            }
+        }
+    }
+
     public string TimeLabel => Timestamp.ToLocalTime().ToString("HH:mm:ss");
 }
